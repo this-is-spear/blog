@@ -1,23 +1,20 @@
 /** @type {import("pliny/config").PlinyConfig } */
 const siteMetadata = {
-  title: 'Next.js Starter Blog',
-  author: 'Tails Azimuth',
-  headerTitle: 'TailwindBlog',
-  description: 'A blog created with Next.js and Tailwind.css',
-  language: 'en-us',
+  title: 'this-is-spear\'s blog',
+  author: 'this-is-spear',
+  headerTitle: 'this-is-spear\'s blog',
+  description: '경험을 통해 동화처럼 이야기 할 수 있는 글솜씨를 꿈꾸고 있습니다.',
+  language: 'ko-kr',
   theme: 'system', // system, dark or light
-  siteUrl: 'https://tailwind-nextjs-starter-blog.vercel.app',
-  siteRepo: 'https://github.com/timlrx/tailwind-nextjs-starter-blog',
+  siteUrl: 'https://tis-blog.vercel.app',
+  siteRepo: 'https://github.com/this-is-spear/blog',
   siteLogo: '/static/images/logo.png',
   socialBanner: '/static/images/twitter-card.png',
   mastodon: 'https://mastodon.social/@mastodonuser',
-  email: 'address@yoursite.com',
-  github: 'https://github.com',
-  twitter: 'https://twitter.com/Twitter',
-  facebook: 'https://facebook.com',
-  youtube: 'https://youtube.com',
-  linkedin: 'https://www.linkedin.com',
-  locale: 'en-US',
+  email: 'rjsckdd12@gmail.com',
+  github: 'https://github.com/this-is-spear',
+  linkedin: 'https://www.linkedin.com/this-is-spear',
+  locale: 'ko-KR',
   analytics: {
     // If you want to use an analytics provider you have to add it to the
     // content security policy in the `next.config.js` file.
