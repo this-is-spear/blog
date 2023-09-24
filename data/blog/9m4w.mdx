@@ -29,25 +29,14 @@ Error has been observed at the following site(s):
 
 서비스의 흐름으로 유추 할 때 backup 과정에서 대기하는 시간이 길어지다보니 `Connection`이 닫힌듯 했습니다.
 
-```mermaid
-sequenceDiagram
-
-batch ->> api : announce starting a backup
-api ->> batch : ok
-batch ->> batch : backup
-batch ->> api : announce terminating a backup
-batch --> api : try connection but fault
-
-```
+![프로세스 과정](/static/images/9m4w/8.png)
 
 본문 내용을 추측 해 문제 상황을 구성하기 위해 다음과 같이 코드를 작성했습니다.
 
 ```java
 public Mono<Void> backup(int limit, int offset) {
-    return api.findBackupUsersStatusNotStarted(limit, offset)
-        .flatMapMany(registrations -> Flux.fromIterable(registrations.getRegistrations()))
+    return registrations
         .flatMap(api::progressBackup)
-        .subscribeOn(Schedulers.boundedElastic())
         .flatMap(registration -> {
             // 4 분 동안 대기
             Thread.sleep(4*60*1000);
@@ -159,22 +148,33 @@ SO_KEEPALIVE 는 제대로 동작하지 않고 커넥션이 끊긴 모습을 확
 
 ![처음으로 정리한 문서](/static/images/9m4w/3.png)
 
-비효율적인 문서화는 지양하는 터라 프로젝트에 적용하면서 꼭 필요한 지식인 것만 추리고 추려서 글로 정리했다
+비효율적인 문서화는 지양하는 터라 프로젝트에 적용하면서 꼭 필요한 지식인 것만 추리고 추려서 글로 정리했습니다.
 
 <div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        잡 인스턴스 개념을 이해해야 배치 프로세스 간 데이터를 공유하는 프로세스를 이해할 수 있다는 내용
+
+
         ![1](/static/images/9m4w/4.png)
     </div>
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        잡 인스턴스 내부에 컨텍스트가 저장되는 `JobExecution` 에 대한 내용
+
+
         ![2](/static/images/9m4w/5.png)
     </div>
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        분리된 Step 에서 컨텍스트가 어떻게 공유되는지 설명하는 내용
+
+
         ![3](/static/images/9m4w/6.png)
     </div>
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        chunk 사이즈로 분리했을 때 어떻게 동작하는지 로그를 찍는 내
+
+
         ![4](/static/images/9m4w/7.png)
     </div>
 </div>
 
-누군가 이 글을 읽게 된다면 어떻게 하면 잘 활용할 수 있을지, 어떤 한계점이 있으니 주의해야 할지 고민하면서 작성했습니다.
-그런 고민들 덕분에 조금 더 깊게 공부 할 수 있었습니다.
+누군가 이 글을 읽게 된다면 어떻게 하면 잘 활용할 수 있을지, 어떤 한계점이 있으니 주의해야 할지 고민하면서 작성했고, 이런 고민들 덕분에 조금 더 깊게 공부 할 수 있었습니다.
