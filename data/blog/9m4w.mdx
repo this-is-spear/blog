@@ -73,7 +73,8 @@ public final SPEC evictInBackground(Duration evictionInterval) {
 > 실제로 프로브는 크기가 0인 데이터 패킷을 사용해 TCP 연결을 유지하게 됩니다.
 > 스트림을 전달하는 도중에 프로브가 주기적으로 전달되도 사용자 프로그램에 위험하지 않습니다.
 
-실제로 확인하기 위해서 MySQL 과 서버 간에 연결을 유지하기 위해 prove 를 주고 받고 있었습니다.
+실제로 어떻게 전달받는지 확인하기 위해서 [`Wireshark`](https://www.wireshark.org/)를 활용해서 패킷을 캡처했습니다.
+`Wireshark` 덕분에 MySQL 과 인텔리제이 간 연결을 유지하기 위해 prove 를 주고 받는 모습을 볼 수 있었습니다.
 
 ```
 179240	2442.900015	127.0.0.1	127.0.0.1	TCP	44	[TCP Keep-Alive] 3306 → 53226 [ACK] Seq=2834 Ack=488 Win=407808 Len=0
@@ -89,11 +90,8 @@ public final SPEC evictInBackground(Duration evictionInterval) {
 
 ### 적용한 내용
 
-결과로는 `evictInBackground` 메서드 사용해 주기적으로 커넥션을 관리할 수 있도록 설정했습니다.
-
-`SO_KEEPALIVE`는 제대로 동작하지 않고 커넥션이 끊긴 모습을 확인했고 **주기적으로 프로브가 제대로 전달되지 않음**을 예상 할 수 있었습니다.
-
-코드는 다음과 같습니다.
+아쉽게도 `SO_KEEPALIVE`는 제대로 동작하지 않고 커넥션이 끊긴 모습을 확인했고 **주기적으로 프로브가 제대로 전달되지 않고** 있었습니다.
+결국 `evictInBackground` 메서드 사용해 주기적으로 커넥션을 관리할 수 있도록 설정했습니다. 코드는 다음과 같습니다.
 
 ```diff-js:Configuration.java
     @Bean
@@ -125,11 +123,11 @@ public final SPEC evictInBackground(Duration evictionInterval) {
 
 ### 경험을 통해 느낀점
 
-테스트를 통해 안정성에 의심이 없었지만, 운영 환경에서 실행하는 순간 다양한 트러블이 발생했습니다.
+테스트를 통해 안정성에 의심이 없었지만, 운영 환경에서 실행하는 순간 예상치 못한 트러블이 발생했습니다.
 
 트러블 슈팅 과정에서 어떤 테스트가 운영 환경에서의 안정성까지 확보해줄지, 그런 테스트를 효율적으로 작성하는 방법이 무엇인지를 고민 할 수 있었습니다.
 
-이번 기회에 [소프트웨어 테스팅](https://product.kyobobook.co.kr/detail/S000201055864) 책을 읽고 효율적인 트러블 슈팅을 고민하는 시간을 가져야겠습니다.
+이번 기회에 [소프트웨어 테스팅](https://product.kyobobook.co.kr/detail/S000201055864) 책을 읽으며 효율적인 트러블 슈팅을 고민 해보겠습니다.
 
 ## 프로젝트 중간 점검
 
