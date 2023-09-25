@@ -46,7 +46,7 @@ public Mono<Void> backup(int limit, int offset) {
 }
 ```
 
-동일한 예외가 발생했고, 이와 관련된 [문서화](https://projectreactor.io/docs/netty/snapshot/reference/index.html#faq.connection-closed)를 통해 문제를 해결 해보려고 다음과 같이 정리 했습니다.
+위 코드에서 동일한 예외가 발생했고, 이와 관련된 [문서화](https://projectreactor.io/docs/netty/snapshot/reference/index.html#faq.connection-closed)를 통해 문제를 해결 해보려고 다음과 같이 정리 했습니다.
 
 - 서버들은 `keep-alive` 를 유지하기 위해 probe 를 보낸다.
 - 서버들은 자신들의 커넥션을 지속적으로 관리한다.
@@ -72,6 +72,18 @@ public final SPEC evictInBackground(Duration evictionInterval) {
 > `Keepalive`는 프로브를 통해 연결이 계속 작동 중임을 확신 할 수 있습니다.
 > 실제로 프로브는 크기가 0인 데이터 패킷을 사용해 TCP 연결을 유지하게 됩니다.
 > 스트림을 전달하는 도중에 프로브가 주기적으로 전달되도 사용자 프로그램에 위험하지 않습니다.
+
+실제로 확인하기 위해서 MySQL 과 서버 간에 연결을 유지하기 위해 prove 를 주고 받고 있었습니다.
+
+```
+179240	2442.900015	127.0.0.1	127.0.0.1	TCP	44	[TCP Keep-Alive] 3306 → 53226 [ACK] Seq=2834 Ack=488 Win=407808 Len=0
+179241	2442.900073	127.0.0.1	127.0.0.1	TCP	56	[TCP Keep-Alive ACK] 53226 → 3306 [ACK] Seq=488 Ack=2835 Win=405440 Len=0 TSval=xxx TSecr=xxx
+```
+
+> 확인 중에 알 수 있었던 건 인텔리제이에서 DB 와 세션을 유지 할 때, 53XXX 포트 번호를 사용하고 있었습니다.
+
+서버간에 통신을 확인하고 싶어 패킷을 조사 했지만, 도커 통신으로 이뤄지고 있던터라 패킷 분석이 어려웠습니다 😭
+도커 학습이 부족한걸까요,,, 학습해야할 부분이 추가됐습니다.
 
 [참고자료](https://tldp.org/HOWTO/TCP-Keepalive-HOWTO/overview.html)
 
