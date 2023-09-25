@@ -77,8 +77,8 @@ public final SPEC evictInBackground(Duration evictionInterval) {
 `Wireshark` 덕분에 MySQL 과 인텔리제이 간 연결을 유지하기 위해 prove 를 주고 받는 모습을 볼 수 있었습니다.
 
 ```
-179240	2442.900015	127.0.0.1	127.0.0.1	TCP	44	[TCP Keep-Alive] 3306 → 53226 [ACK] Seq=2834 Ack=488 Win=407808 Len=0
-179241	2442.900073	127.0.0.1	127.0.0.1	TCP	56	[TCP Keep-Alive ACK] 53226 → 3306 [ACK] Seq=488 Ack=2835 Win=405440 Len=0 TSval=xxx TSecr=xxx
+X.900015	SIP	DIP	TCP	44	[TCP Keep-Alive] 3306 → 53226 [ACK] Seq=2834 Ack=488 Win=407808 Len=0
+X.900073	DIP	SIP	TCP	56	[TCP Keep-Alive ACK] 53226 → 3306 [ACK] Seq=488 Ack=2835 Win=405440 Len=0 TSval=xxx TSecr=xxx
 ```
 
 > 확인 중에 알 수 있었던 건 인텔리제이에서 DB 와 세션을 유지 할 때, 53XXX 포트 번호를 사용하고 있었습니다.
