@@ -13,7 +13,7 @@ const siteMetadata = {
   mastodon: 'https://mastodon.social/@mastodonuser',
   email: 'rjsckdd12@gmail.com',
   github: 'https://github.com/this-is-spear',
-  linkedin: 'https://www.linkedin.com/this-is-spear',
+  linkedin: 'https://www.linkedin.com/in/this-is-spear',
   locale: 'ko-KR',
   analytics: {
     // If you want to use an analytics provider you have to add it to the
