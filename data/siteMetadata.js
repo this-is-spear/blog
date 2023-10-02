@@ -3,7 +3,7 @@ const siteMetadata = {
   title: 'this-is-spear\'s blog',
   author: 'this-is-spear',
   headerTitle: 'this-is-spear\'s blog',
-  description: '경험을 통해 동화처럼 이야기 할 수 있는 글솜씨를 꿈꾸고 있습니다.',
+  description: '경험을 동화처럼 이야기 하는 글솜씨를 꿈꾸며...',
   language: 'ko-kr',
   theme: 'system', // system, dark or light
   siteUrl: 'https://tis-blog.vercel.app',
