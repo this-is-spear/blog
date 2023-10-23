@@ -431,11 +431,113 @@ enum class Prize(
 
 ## 컬렉션
 
-🛠 작성중
+코틀린은 자바와의 호환성을 위해 자바 컬렉션을 활용하고 있어. 덕분에 자바와 코틀린 간 연결에서 컬렉션이 변경되지 않지.
+
+```kotlin
+val list = listOf(1, 2, 3)
+val set = setOf(1, 2, 3)
+val map = mapOf(1 to "one", 2 to "two", 3 to "three")
+```
+
+특정한 자료구조를 직접 선택 할 수도 있어.
+
+```kotlin
+val list = arrayListOf(1, 2, 3)
+val set = hashSetOf(1, 2, 3)
+var map = hashMapOf(1 to "one", 2 to "two", 3 to "three")
+```
 
 ## 함수 호출
 
-🛠 작성중
+### 편리한 함수 호출
+
+자바와는 달리 함수 호출을 유연하게 구성할 수 있어.
+코틀린은 컬렉션을 `String` 으로 반환해야 할 때 `toString()` 함수를 호출하기도 하지.
+
+```kotlin
+val list = listOf(1, 2, 3)
+println(list) // list.toString() 호출!!
+```
+
+그리고 파라미터 힌트를 직접 제공한다거나 기본 값으로 설정해 값을 전달하지 않아도 되거나 다양한 방법이 있지.
+다음과 같은 함수가 있다고 생각해볼게.
+
+```kotlin
+fun <T> joinToString(
+    collection: Collection<T>,
+    separator: String,
+    prefix: String,
+    suffix: String
+): String {
+    val result = StringBuilder(prefix)
+    for ((index, element) in collection.withIndex()) {
+        if (index > 0) result.append(separator)
+        result.append(element)
+    }
+    result.append(suffix)
+    return result.toString()
+}
+```
+
+아래처럼 호출도 가능하지만 이름에 인자를 붙여 전달 할 수 있어.
+
+```kotlin
+val list = listOf(1, 2, 3)
+println(joinToString(list, ",", "[", "]"))
+```
+
+다음처럼 인자 일부를 명시해서 전달 할 수 있어.
+
+```kotlin
+val list = listOf(1, 2, 3)
+println(joinToString(list, separator = ",",  prefix = "[", suffix = "]"))
+```
+
+> 자바에서는 동일한 자료구조에 잘못된 값을 전달하는 경우가 존재했는데, 코틀린에서는 이런 인지 오류를 일부 해소할 수 있어보여.
+
+### 디폴트 파라미터
+
+코틀린에서는 오버로딩으로 인한 일부 중복을 막기 위해서 디폴트 파라미터를 지정할 수 있게 구현되어 있어.
+
+```kotlin
+fun <T> joinToString(
+    collection: Collection<T>,
+    separator: String = ",",
+    prefix: String = "[",
+    suffix: String = "]"
+){
+  //...
+}
+```
+
+그럼 다음처럼 사용 할 수 있지.
+
+```kotlin
+println(joinToString(list, prefix = "[", suffix = "]"))
+println(joinToString(list, separator = ",", suffix = "]"))
+println(joinToString(list, ",")) // separator 로 설정됨
+```
+
+> 코틀린에서 일반 호출 문법을 사용하게 되면 함수를 선언할 때와 같은 순서로 인자를 지정하게 돼.
+> 그런 경우 일부 생략하면 뒷부분의 인자가 생략되니 유의해야 해.
+
+### 자바에서 디폴트 파라미터 함수를 사용하는 경우
+
+자바에서 디폴트 파라미터가 포함된 함수를 호출 할 때는 코틀린 함수에 `@JvmOverloads`를 추가해야 자바도 동일하게 사용 할 수 있어.
+
+```kotlin
+@JvmOverloads
+fun <T> joinToString(
+    collection: Collection<T>,
+    separator: String = ",",
+    prefix: String = "[",
+    suffix: String = "]"
+) {
+    //...
+}
+```
+
+> `@JvmOverloads`를 추가하지 않으면 기본 함수 형식만 사용 가능해.
 
 ## 확장
 
@@ -452,3 +554,37 @@ enum class Prize(
 ## 로컬 함수 확장
 
 🛠 작성중
+
+## 통찰
+
+### @JvmOverloads
+
+아래와 같은 함수가 존재 할 때 `@JvmOverloads` 붙인 경우와 붙이지 않는 경우 바이트 코드가 어떻게 생성되는지 확인해보자.
+
+```kotlin
+fun <T> joinToString(
+    collection: Collection<T>,
+    separator: String = ",",
+    prefix: String = "[",
+    suffix: String = "]"
+) {
+    //...
+}
+```
+
+붙이지 않는 경우는 다음처럼 하나의 메서드만 존재하게 돼.
+
+```
+public static synthetic joinToString$default(Ljava/util/Collection;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+```
+
+그러나 붙이게 된다면 4 개의 메서드가 생성되게 되지.
+
+```
+public static synthetic joinToString$default(Ljava/util/Collection;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+public final static joinToString(Ljava/util/Collection;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+public final static joinToString(Ljava/util/Collection;Ljava/lang/String;)Ljava/lang/String;
+public final static joinToString(Ljava/util/Collection;)Ljava/lang/String;
+```
+
+아쉽게도 인자 이름을 함께 전달 할 수는 없지만 오버로딩을 할 필요가 없어져서 코드가 매우 간결해져.
