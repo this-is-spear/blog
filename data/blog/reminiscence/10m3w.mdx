@@ -1,0 +1,46 @@
+---
+title: 10월 3주 있었던 일 정리
+date: '2023-10-21'
+tags: ['회고']
+draft: false
+summary: QA 경험중
+images: []
+---
+
+## QA 경험중
+
+### 경험했던 일
+
+- 기획과 다르게 구현된 코드
+- 전달력이 부족 했던 상황 경험
+- 그 밖에도 의견을 표출 할 수 있는 좋은 문화 경험
+
+### 네트워크 정리
+
+서비스 간 통신 과정에서 네트워크 에러가 많이 발생했어. `ConnectionTimeoutException`, `ReadTimeoutException`, `PrematureCloseException` 등을 경혐했지.
+
+- `connection`, `keep-alive` 정리
+- `connection` : 통신을 위한 연결
+- `keep-alive` : 연결된 통신을 유지하기 위한 메커니즘
+
+- `PrematureCloseException` 해결
+
+`keep-alive` 유지가 되지 않은 커넥션으로 연결하려는 문제였어.
+
+- `ConnectionTimeoutException` 해결
+
+커넥션 풀을 획득하는 시간이 오래걸리는 문제였어.
+
+- `ReadTimeoutException` 해결
+
+특정 시간 동안 데이터를 읽는 데 실패했을 때 발생했어.
+
+이 문제가 발생한 가장 큰 문제점은 이미 읽은 시간이
+
+- `webclient` 학습
+
+## 이번 주 읽은 테스팅 책
+
+- [계약 설계](https://tis-blog.vercel.app/blog/log/effective-software-testing-4)
+
+### 계약 설계
