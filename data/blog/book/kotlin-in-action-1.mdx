@@ -359,74 +359,6 @@ fun readInt(reader: BufferedReader) {
 > 여담으로 코틀린은 자바와 달리 체크 예외인 경우 throws XXXException 이 붙지 않아.
 > 자바에서 사용하는 오류 발생을 막기 위한 예외 잡는 방식이 오류 발생을 방지하지 못할 뿐더러 불필요하기 때문이래.
 
-
-## 통찰
-
-### statement 와 expression
-
-위 예제 중 다음과 같은 함수 본문에서 특이한 점은 코틀린에서 if 문은 `expression` 이라는 점이야.
-
-```kotlin
-fun max(a: Int, b: Int): Int {
-    return if (a > b) a else b
-}
-```
-
-자바에서는 사용할 수 없는 코드지.
-
-```java
-public class A{
-    public int max(int a, int b) {
-        // 사용할 수 없는 코드
-        // return if (a > b) a else b
-        if (a > b) return a;
-        return b;
-    }
-}
-```
-
-여기서 확인 할 수 있는 점은 자바의 `if`는 `statement` 이고 코틀린의 `if`는 `expression` 이라는 점이야.
-
-> `statement`는 자식을 둘러싼 상위 블록 요소로 존재하며 아무 값을 만들어내지 않지.
-> 반면 `expression`은 값을 만들어 다른 식의 하위 요소로 계산에 참여할 수 있어!
-> 이러한 특징을 잘 활용하면 간결하게 코드를 구성 할 수 있어.
-
-그리고 코틀린은 대입문을 `statement`로 사용하고 있으니 주의하자고.
-즉, 제어 구조는 `expression`, 대입문은 `statement`야.
-
-### enum 으로 할 수 있는 멋진 일
-
-enum 으로 어떤 일을 할 수 있을지 고민해봤는데, 요즘 코틀린으로 로또 게임기를 구현하는데 요긴하게 쓰일 수 있어 보였어!
-로또 게임기의 결과로 등수와 상품을 함께 전달해야 하는 데, 여기에서 쉽게 관리 할 수 있지 않을까 싶어.
-
-```kotlin
-import java.math.BigDecimal
-
-enum class Prize(
-    val rank: Int,
-    val money: BigDecimal
-) {
-    FIRST_PRIZE(1, BigDecimal(1_000_000_000)),
-    SECOND_PRIZE(2, BigDecimal(50_000_000)),
-    THIRD_PRIZE(3, BigDecimal(1_000_000)),
-    FOURTH_PRIZE(4, BigDecimal(50_000)),
-    FIFTH_PRIZE(5, BigDecimal(5_000)),
-    QQUANG(6, BigDecimal(0));
-
-    fun getPrize() = money
-}
-```
-
-약간 아쉬운 건 값만 열거하는 친구가 된 것 같아.
-다음에 더 멋지게 사용 할 수 있는 일을 고민해보자!
-
-### if 와 when 분기 그리고 스마트 캐스트와 블록
-
-🛠 작성중
-
-- if + when + expression
-- if + when + block
-
 # 3장 : 함수 정의와 호출
 
 ## 컬렉션
@@ -541,21 +473,223 @@ fun <T> joinToString(
 
 ## 확장
 
-🛠 작성중
+### 확장 함수
+
+코틀린을 기존 자바 프로젝트에 통합하는 경우 코틀린으로 변환할 수 없는 경우 다음처럼 확장 함수로 기능을 확장해 사용 할 수 있어.
+
+```kotlin
+fun String.lashChar(): Char = this.get(this.length - 1)
+
+println("kotlin".lashChar())
+```
+
+확상 함수를 만드려면 확장할 클래스 이름만 붙이면 돼.
+이 때 클래스 이름을 `receiver type`이라 하고 호출 되는 값을 `receiver object`라고 해.
+
+```kotlin
+fun /*receiver type is string*/String.lashChar(): Char
+        = /*receiver object*/this.get(/*receiver object*/this.length - 1)
+```
+
+그리고 일반 메서드처럼 확상 함수 본문에 `this`를 생략할 수 있어.
+
+```kotlin
+fun String.lashChar(): Char = get(length - 1)
+```
+
+확장 함수를 사용한다고 해도 캡슐화가 깨지지 않으니 안심해도 돼.
+즉, 비공개(private) 되거나 보호된(protected) 멤버에 접근 할 수 없어.
+
+자바에서 확장함수를 사용할 때는 확장 함수가 추가된 코틀린 파일을 호출 해 사용하면 돼.
+
+```java
+char c = StringUtilKt.lastChar("Java");
+```
+
+### 확장 함수 주의 사항
+
+확장 함수를 통해 쉽게 기능을 확장 할 수 있지만 꽤나 제약사항이 많아.
+
+- 확장 함수와 멤버 함수 이름이 동일한 경우 멤버 함수가 호출된다.
+- 확장 함수는 정적으로 결정되기 때문에 오버라이드 할 수 없다.
+
+이런 제약이 있다는 것을 인지해야 해.
+
+### 확장 프로퍼티
+
+프로퍼티도 확장 할 수 있는데, getter 와 setter 를 명시해야 해.
+그리고 **확장 프로퍼티는 뒷바침하는 필드가 없기 때문에 getter는 꼭 정의해줘야 해!**
+
+```kotlin
+var StringBuilder.lastChar: Char
+    get() = get(length - 1)
+    set(value) {
+        setCharAt(length - 1, value)
+    }
+
+println(StringBuilder("Kotlin").lastChar)
+```
 
 ## 컬렉션 처리
 
-🛠 작성중
+코틀린은 자바 컬렉션 API를 확장해서 관리하고 있어. 꽤나 많은 확장 함수를 제공하고 있으니 필요할 때마다 찾아봐야겠어.
+
+### 가변 인자 함수
+
+`varargs` 키워드를 사용하면 리스트 생성할 때 원소를 나열해야하는 번거로움을 코틀린에서는 쉽게 해결 할 수 있어.
+
+바로 스프레드(*) 연산자가 이를 도와주고 있어.
+
+```kotlin
+fun main(args: Array<String>) {
+    val list = listOf("args: ", *args)
+    println(list)
+}
+```
+
+### 중위 호출과 구조 분해 선언
+
+코틀린에서는 Map 자료구조를 간단하게 구성할 수 있지.
+그건 바로 중위 호출(infix call)을 통해 `to` 라는 일반 메서드를 호출 할 수 있기 때문이다.
+
+```kotlin
+val map = mapOf(1 to "one")
+```
+
+**중위 호출**은 수신 객체와 유일한 메서드 인자 사이에 메서드 이름을 넣는 방법을 말해.
+`to` 메서드 말고 `kotest`의 `shouldBe` 등에서도 활용 할 수 있어.
+
+**구조 분해 선언**은 다음처럼 두 변수를 즉시 초기화하는 방법을 의미해.
+
+```kotlin
+val (number, name) = 1 to "one"
+```
 
 ## 문자열과 정규식
 
-🛠 작성중
+코틀린 문자열은 자바 문자열과 동일해. 그래서 자바 메서드로 넘겨도 문제가 생기지 않지.
+코틀린은 확장 함수로 다양한 기능을 제공하고 있어.
+
+### 문자열 나누기
+
+코틀린은 여러 개의 문자로 문자열을 나눌 수 있도록 확장 함수를 제공하고 있어.
+
+```kotlin
+println("12.345-6.A".split("\\.|-".toRegex()))
+```
+
+코틀린에서는 toRegex 확장 함수를 활용해 정규식으로 쉽게 변경 가능하지.
+
+아니면 split 확장 함수에는 여러 개의 문자열을 받는 경우도 있어.
+
+```kotlin
+println("12.345-6.A".split(".", "-"))
+```
+
+### text block
+
+코틀린은 `text block`을 제공하고 있어.
+원래 이스케이핑하려면 `//.` 라고 써야하지만 `\.` 로 사용해도 되지.
+
+```kotlin
+val regex = """(.+)/(.+)/.(.+)""".toRegex()
+```
+
+`text block`은 이스케이핑 말고도 줄 바꿈 등 편한 기능을 제공하고 있어.
+
+```kotlin
+val text = """
+        hello
+        hi
+        """
+```
 
 ## 로컬 함수 확장
 
-🛠 작성중
+코틀린은 함수에서 추출한 함수를 중첩시킬 수 있어.
+덕분에 DRY 원칙을 어느정도 지킬 수 있지.
+
+```kotlin
+fun save(from: String, to: String, chat: String) {
+    fun validate(name: String, chat: String) {
+        if (chat.isEmpty()) {
+            throw IllegalArgumentException("${name}은 아무 말도 하지 않았어요")
+        }
+    }
+    validate(from, chat)
+    validate(to, chat)
+}
+```
+
+확장 함수를 통해 로컬 함수를 추가 할 수도 있지만 관리가 어려워질 수 있으니 주의하자.
 
 ## 통찰
+
+### statement 와 expression
+
+위 예제 중 다음과 같은 함수 본문에서 특이한 점은 코틀린에서 if 문은 `expression` 이라는 점이야.
+
+```kotlin
+fun max(a: Int, b: Int): Int {
+    return if (a > b) a else b
+}
+```
+
+자바에서는 사용할 수 없는 코드지.
+
+```java
+public class A{
+    public int max(int a, int b) {
+        // 사용할 수 없는 코드
+        // return if (a > b) a else b
+        if (a > b) return a;
+        return b;
+    }
+}
+```
+
+여기서 확인 할 수 있는 점은 자바의 `if`는 `statement` 이고 코틀린의 `if`는 `expression` 이라는 점이야.
+
+> `statement`는 자식을 둘러싼 상위 블록 요소로 존재하며 아무 값을 만들어내지 않지.
+> 반면 `expression`은 값을 만들어 다른 식의 하위 요소로 계산에 참여할 수 있어!
+> 이러한 특징을 잘 활용하면 간결하게 코드를 구성 할 수 있어.
+
+그리고 코틀린은 대입문을 `statement`로 사용하고 있으니 주의하자고.
+즉, 제어 구조는 `expression`, 대입문은 `statement`야.
+
+### enum 으로 할 수 있는 멋진 일
+
+enum 으로 어떤 일을 할 수 있을지 고민해봤는데, 요즘 코틀린으로 로또 게임기를 구현하는데 요긴하게 쓰일 수 있어 보였어!
+로또 게임기의 결과로 등수와 상품을 함께 전달해야 하는 데, 여기에서 쉽게 관리 할 수 있지 않을까 싶어.
+
+```kotlin
+import java.math.BigDecimal
+
+enum class Prize(
+    val rank: Int,
+    val money: BigDecimal
+) {
+    FIRST_PRIZE(1, BigDecimal(1_000_000_000)),
+    SECOND_PRIZE(2, BigDecimal(50_000_000)),
+    THIRD_PRIZE(3, BigDecimal(1_000_000)),
+    FOURTH_PRIZE(4, BigDecimal(50_000)),
+    FIFTH_PRIZE(5, BigDecimal(5_000)),
+    QQUANG(6, BigDecimal(0));
+
+    fun getPrize() = money
+}
+```
+
+약간 아쉬운 건 값만 열거하는 친구가 된 것 같아.
+다음에 더 멋지게 사용 할 수 있는 일을 고민해보자!
+
+### if 와 when 분기 그리고 스마트 캐스트와 블록
+
+🛠 작성중
+
+- if + when + expression
+- if + when + block
+
 
 ### @JvmOverloads
 
