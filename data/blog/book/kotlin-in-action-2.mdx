@@ -659,18 +659,55 @@ listOf("hello", "hi", "welcome")
 
 ## 자바 함수형 인터페이스 활용
 
-🛠️작성중
+코틀림 람다를 Runnable 과 같은 람다형 인터페이스에 적용 할 수 있을지 궁금했을거야.
+코틀린은 자바의 함수형 인터페이스 덕분이야.
+
+메서드가 하나이기 때문에 유추가 가능하지.
+
+**AS-IS**
+
+```java
+void post(int delay, Runnable runnable) //...
+```
+
+```kotlin
+post(1000) {println("delay 1000")}
+```
+
+## 수신 객체 지정 람다
+
+코틀린에는 수신 객체를 명시하지 않고 람다의 본문 안에서 다른 객체의 메서드를 호출 할 수 있는 기능을 제공해.
+이를 수신 객체 지정 람다(lambda with receiver)라고 불러.
+
+### with 함수
+
+with 함수를 활용하면 객체 이름을 반복해서 선언하지 않고 활용 할 수 있어.
+
+```kotlin
+fun alphabet() = with(StringBuilder()) {
+        for (letter in 'A' .. 'Z') {
+            append(letter)
+        }
+        append("\n This is Alphabet!!")
+        toString()
+    }
+```
+
+> 만약 외부 인스턴스의 toString 을 호출하고 싶으면 `this@OuterClass.toString()`를 호출해서 접근해야 해.
+
+### apply 함수
+
+`apply`는 반환할 때 수신 객체가 필요할 떄 사용해.
+`with` 랑 유사하지만 수신 객체를 반환 한다는 점에서 차이가 있어.
+
+```kotlin
+fun alphabet() = StringBuilder().apply {
+    for (letter in 'A' .. 'Z') {
+        append(letter)
+    }
+ }.toString()
+```
 
 # 통찰
 
 🛠️작성중
-
-## by 키워드
-
-🛠️작성중
-
-- 로또 티켓을 구매할 때 수동으로 숫자를 입력할 수 있음
-- 빠른 개발을 위해 현재 입력해야 하는 숫자를 6으로 고정
-- 그런데 현실판 로또는 숫자를 일부만 입력해도 됨
-- 정책 변경 가능성에 대비해 데코레이터로 분리해서 관리하면 SRP 지키기 가능
-
