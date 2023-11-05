@@ -2,7 +2,226 @@
 title: Kotlin IN ACTION |
 date: '2023-11-08'
 tags: ['책', '코틀린', '코틀린 인 액션']
-draft: true
+draft: false
 summary: 코틀린 인 액션 6장, 7장 읽고 정리
 images: []
 ---
+
+# Introduction
+
+코틀린은 가독성을 위해 타입 시스템 방법을 도입했어.
+`null` 여부에 따라 어떤 행동을 하는지를 간단하게 선언 할 수 있지.
+
+코틀린에서 제공하는 타입 시스템을 간단하게 설명해볼게.
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+# 6장 : 코틀린 타입 시스템
+
+## Nullable
+
+코틀린은 `null` 타입을 신중하게 그리고 다채롭게 관리할 수 있어.
+어떻게 사용할 수 있는지 알아보자.
+
+### String?
+
+코틀린은 다음처럼 변수를 선언 할 수 있어.
+
+```kotlin
+val message: String = "hello"
+```
+
+그런데 자바와 달리 `null` 입력되면 `NullPointerException`이 발생하게 되지
+
+```kotlin
+// NullPointerException!!!
+val message: String = null
+```
+
+`null` 을 입력하고 싶다면 타입 뒤에 `?` 키워드를 입력하면 돼.
+
+```kotlin
+val message: String? = null
+```
+
+이렇게 구분하는 이유는 `null` 가능성에 따라 검증할지 안할지를 사용자가 집적 선택 할 수 있게 돼.
+무슨 말이냐면은 `null` 가능성이 있는 곳 한 곳만 검증하고 다른 곳들은 `type safe` 하게 활용 할 수 있다는 의미야.
+중복으로 검증할 필요가 없어지지.
+
+### string?.length()
+
+호출한 변수가 제공하는 메서드를 호출 할 때 변수가 `null` 이면 `NPE`의 쓴 맛을 봐야했어.
+하지만 코틀린은 변수를 선언하기 전에 `?` 키워드를 사용하면 NPE가 아닌 null을 반환받게 돼.
+
+```kotlin
+var message: String? = null
+println(message?.length) // null
+```
+
+### string?:"empty"
+
+엘비스 연산자(`?:`)는 `null` 값이 들어오면 우항 값을 반환하도록 만들어진 친구야.
+
+```kotlin
+var message: String? = null
+println(message ?: "hello") // hello
+```
+
+엘비스 연산자는 다음처럼 활용 할 수 있어.
+
+```kotlin
+fun Person.countryName() = company?.address?.country ?: "Unknown"
+```
+
+### string as? Empty
+
+`as?`를 활용하면 안전하게 캐스트도 가능하지.
+
+```kotlin
+fun getType(s: Any?) = s as? String ?: "no string"
+```
+
+### string!!
+
+`!!` 키워드를 활용하면 `null` 아님을 단언 할 수도 있어.
+
+```kotlin
+val message: String? = null
+println(message!!) // NPE!!
+```
+
+> !! 키워드를 사용한 이유는 더 나은 방법을 찾아보라는 표현이라고 해.
+> 만약 사용한다면 더 좋은 방법이 있는지 고민해보자.
+
+### string?.let{...}
+
+코틀린은 `null`이 아닌 값을 받을 경우만 동작하도록 도와주는 친구가 있어.
+예상한 것처럼 `null`이 반환되면 아무런 동작을 수행하지 않지.
+
+```kotlin
+fun printHello(message: String?){
+    message?.let {
+        println(message)
+     }
+}
+```
+
+### late initialized
+
+객체를 사용할 때 초기화하고 싶다면 `lateinit` 키워드를 사용해야 해.
+`lateinit` 키워드를 활용하면 `null` 타입 검사를 하지 않아도 되지.
+
+```kotlin
+class Hello {
+    private lateinit var message: String
+
+    @Befor fun setUp() {
+        message = "hello"
+    }
+
+    @Test fun test() {
+//        assert(message!! == "hello") -> null 인지 확인하지 않아도 된다.
+        assert(message == "hello")
+    }
+}
+```
+
+`lateinit` 키워드를 사용할 때 프로퍼티는 `var`로 선언되어야 해.
+
+## 코틀린의 원시 타입
+
+### 원시 타입 : Int, Boolean
+
+자바에는 원시 티입이 스택에 실제 값이 저장되지만 참조 타입은 스택에 참조 주소가 들어가고 있어.
+코틀린도 마찬가지야. 원시 타입과 관련된 키워드는 없지만 원시 타입으로 저장되는 참조 타입을 사용하면 원시 타입 처럼 값을 관리하게 돼.
+
+윈시 타입은 다음과 같아.
+
+- 정수 타입 : Byte, Short, Int, Long
+- 부동 소스점 수 타입 : Float, Double
+- 문자 타입 : Char
+- 불리언 타입 : Boolean
+
+반대로 null 이 될 수 있는 Int? 처럼 `?` 키워드가 포함되면 참조 타입으로 관리가 돼.
+
+> 컬렉션을 관리할 때는 참조 타입으로 관리하게 돼.
+> 그 이유는 JVM에서 타입 인자를 참조 타입만 허용하기 때문이야.
+> 만약 원시 타입으로 이루어진 효율적인 컬렉션을 활용하기 위해서는 서드 파티를 활용해야 해.
+
+### 숫자 간 변환
+
+코틀린에서는 숫자 변환이 자동으로 이뤄지지 않아.
+
+```kotlin
+val i = 0
+val l: Long = i.toLong()
+```
+
+하지만 산술 연산자는 적당한 타입의 값을 받을 수 있게 오버로드 되어 있어.
+
+```kotlin
+val byte:Byte = 1
+val l = byte + 1L
+println(l)
+```
+
+함수에 인자로 넘기는 경우도 자동으로 변환해줘.
+
+```kotlin
+fun foo(l: Long) = println(l)
+foo(42)
+```
+
+### Any, Any?
+
+자바에서는 `Object`가 최상위 클래스라면 코틀린에서는 `Any`가 최상위 타입이야.
+즉, 자바와 코틀린은 내부에서 `Any` 타입과 `Object`로 대응하게 돼.
+
+```kotlin
+val answer: Any = 42
+```
+
+### Unit 타입
+
+`Unit`은 자바의 `Void` 같은 역할 같아.
+만약 제네릭 함수를 반환해야 한다면 다음처럼 간단하게 구현 할 수 있어.
+
+```kotlin
+interface Processor<T> {
+    fun process() : T
+}
+
+class NoResultProcessor: Processor<Unit>{
+    override fun process() { // 반환 타입 지정 X
+        TODO("Not yet implemented") // return 값 반환 X
+    }
+}
+```
+
+자바였다면 `Void` 반환 함수라고 지정하고 반환 값도 지정해야 하지만 코틀린은 그럴 필요가 없지!
+
+
+### Nothing 타입
+
+성공적인 결과가 아닌 경우 예외를 전파해야 하는데, 예외를 전파하는 경우를 표현하기 위해 `Nothing` 이라는 타입을 활용할 수 있어.
+
+```kotlin
+fun fail(message: String) {
+    throw IllegalArgumentException(message)
+}
+```
+
+## 컬렉션과 배열
+
+### 코틀린 컬렉션
+
+코틀린은 다음처럼 활용하면 돼.
+
+| 컬렉션 타입 | 읽기 전용 타입 | 변경 가능 타입                                          |
+|--------|----------|---------------------------------------------------|
+| List   | listOf   | mutableListOf, arrayListOf                        |
+| Set    | setOf    | mutableSetOf, hashSetOf, linkedSetOf, sortedSetOf |
+| Map    | mapOf    | mutableMapOf, hashMapOf, linkedMapOf, sortedMapOf |
+
+컬렉션은 자바와 유사해.
+그래서 어떤 확장 함수를 제공하는지만 파악하면 걱정할 일이 없어.
