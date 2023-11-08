@@ -228,3 +228,18 @@ fun fail(message: String) {
 
 # 7장 : 연산자 오버로딩과 기타 관례
 
+## 산술 연산자 오버로딩
+
+연산자를 오버로딩 하는 함수 앞에는 `operator`가 꼭 필요해.
+
+```kotlin
+data class Point(val x: Int, val y: Int) {
+    operator fun plus(other: Point): Point {
+        return Point(x +  other.x, y + other.y)
+    }
+}
+
+println(Point(10, 20) + Point(20, 30)) // result : Point(30, 50)
+```
+
+자바 클래스에도 연산자를 활용하고 싶을 수 있어.
