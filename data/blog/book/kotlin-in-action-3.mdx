@@ -1,5 +1,5 @@
 ---
-title: Kotlin IN ACTION | 타입 시스템
+title: Kotlin IN ACTION | 타입 시스템, 연산자 오버로딩과 기타 관례
 date: '2023-11-08'
 tags: ['책', '코틀린', '코틀린 인 액션']
 draft: false
@@ -230,6 +230,8 @@ fun fail(message: String) {
 
 ## 산술 연산자 오버로딩
 
+### 산술 연산자
+
 연산자를 오버로딩 하는 함수 앞에는 `operator`가 꼭 필요해.
 
 ```kotlin
@@ -266,6 +268,8 @@ println(Point(10, 20) * 1.5) // result : Point(15, 30)
 > 코틀린은 교환 법칙을 지원하지 않아.
 > 만약 1.5 * POINT 였다면 Double 에 Point 를 곱하는 연산자를 추가 해야 해.
 
+### 함수 식 정리
+
 산술 연산자를 커스텀하기 위해서 필요한 함수 이름을 정리해봤어.
 
 |   식   | 함수 이름 |
@@ -276,19 +280,18 @@ println(Point(10, 20) * 1.5) // result : Point(15, 30)
 | a + b | plus  |
 | a - b | minus |
 
-
 비트 연산은 산술 연산자 처럼 특별한 연산자 함수를 제공하지 않아.
 대신 중위 연산자 표기법을 지원하지.
 
-| 중위 연산자 표기법 |  설명  |
-|:----------:|:----:|
-|    shl     | \<<  |
-|    shr     | \>>  |
-|    ushr    | \>>> |
-|    and     |  &   |
-|     or     |  \|  |
-|    xor     |  ^   |
-|    inv     |  ~   |
+| 중위 연산자 표기법 |    설명     |
+|:----------:|:---------:|
+|    shl     |  &lt&lt   |
+|    shr     |  &rt&rt   |
+|    ushr    | &rt&rt&rt |
+|    and     |     &     |
+|     or     |    \|     |
+|    xor     |     ^     |
+|    inv     |     ~     |
 
 그리고 복합 대입 연산자도 지원해줘.
 
@@ -302,9 +305,89 @@ println(Point(10, 20) * 1.5) // result : Point(15, 30)
 
 단항 연산자도 지원해줘.
 
-| 식  |   함수 이름    |
-|:--:|:----------:|
-| +a | unaryPlus  |
-| -a | unaryMinus |
-| !a |    not     |
-|    |            |
+|    식     |   함수 이름    |
+|:--------:|:----------:|
+|    +a    | unaryPlus  |
+|    -a    | unaryMinus |
+|    !a    |    not     |
+| ++a, a++ |    inc     |
+| --a, a-- |    dec     |
+
+## 비교 연산자 오버로딩
+
+### equals
+
+동등성 연산자(`==`)로 비교하려면 equals 메서드를 오버라이딩 하면 돼.
+
+```kotlin
+data class Point(val x: Int, val y: Int) {
+    override fun equals(other: Any?): Boolean {
+        if (other === this) return true
+        if (other !is Point) return false
+        return other.x == x && other.y == y
+    }
+}
+```
+
+### compareTo
+
+산술 연산자와 큰 차이는 `operator` 키워드가 아닌 `override` 키워드를 사용한다는 점이야.
+`Any` 클래스에 `operator` 키워드로 선언되어 있기 때문이지.
+
+순서 연산자(`>`, `<`, `>=`, `<=`)로 비교하려면 `compareTo` 메서드를 오버라이딩 하면 돼.
+
+```kotlin
+data class Point(val x: Int, val y: Int) : Comparable<Point> {
+    override fun compareTo(other: Point): Int {TODO("Not yet implemented") }
+}
+```
+
+## 컬렉션과 범위에 쓸 수 있는 관례
+
+### get, set
+
+코틀린은 컬렉션 원소에 접근 할 때 배열에 접근하는 방법처럼 접근할 수 있어.
+
+```kotlin
+val map: Map<String, String> = mapOf("A" to "B", "C" to "D")
+println(map["A"]) // B
+```
+
+코틀린은 인덱스 연산자도 관례를 따르게 돼.
+`get`은 다음처럼 선언 할 수 있어.
+
+```kotlin
+data class Point(val x: Int, val y: Int)
+
+operator fun Point.get(index: Int): Int {
+    return when(index) {
+        0 -> x
+        1 -> y
+        else -> throw RuntimeException()
+    }
+}
+
+println(Point(10, 20)[0]) // 10
+```
+
+`set` 은 다음처럼 선언 할 수 있어.
+
+```kotlin
+data class Point(val x: Int, val y: Int)
+
+operator fun Point.set(index: Int, value: Int) {
+    return when(index) {
+        0 -> x = value
+        1 -> y = value
+        else -> throw RuntimeException()
+    }
+}
+val point = Point(10, 20)
+point[0] = 42
+println(point) // Point(42, 20)
+```
+
+### in
+
+
+### rangeTo
