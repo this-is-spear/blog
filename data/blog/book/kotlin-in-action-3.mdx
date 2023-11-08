@@ -218,10 +218,10 @@ fun fail(message: String) {
 코틀린은 다음처럼 활용하면 돼.
 
 | 컬렉션 타입 | 읽기 전용 타입 | 변경 가능 타입                                          |
-|--------|----------|---------------------------------------------------|
-| List   | listOf   | mutableListOf, arrayListOf                        |
-| Set    | setOf    | mutableSetOf, hashSetOf, linkedSetOf, sortedSetOf |
-| Map    | mapOf    | mutableMapOf, hashMapOf, linkedMapOf, sortedMapOf |
+|:------:|:--------:|:--------------------------------------------------|
+|  List  |  listOf  | mutableListOf, arrayListOf                        |
+|  Set   |  setOf   | mutableSetOf, hashSetOf, linkedSetOf, sortedSetOf |
+|  Map   |  mapOf   | mutableMapOf, hashMapOf, linkedMapOf, sortedMapOf |
 
 컬렉션은 자바와 유사해.
 그래서 어떤 확장 함수를 제공하는지만 파악하면 걱정할 일이 없어.
@@ -235,11 +235,57 @@ fun fail(message: String) {
 ```kotlin
 data class Point(val x: Int, val y: Int) {
     operator fun plus(other: Point): Point {
-        return Point(x +  other.x, y + other.y)
+        return Point(x + other.x, y + other.y)
     }
 }
 
 println(Point(10, 20) + Point(20, 30)) // result : Point(30, 50)
 ```
 
-자바 클래스에도 연산자를 활용하고 싶을 수 있어.
+자바 클래스에도 확장 함수를 활용해서 산술 연산자를 쉽게 활용 가능해.
+
+```kotlin
+operator fun Point.plus(other: Point): Point {
+        return Point(x + other.x, y + other.y)
+}
+```
+
+그런데 두 피 연산자가 다르면 어떻게 될까.
+첫 번째 연산자의 결과에 따라 값이 변경 돼.
+
+```kotlin
+data class Point(val x: Int, val y: Int)
+
+operator fun Point.times(scale: Double): Point {
+        return Point((x * scale).toInt(), (y * scale).toInt())
+}
+
+println(Point(10, 20) * 1.5) // result : Point(15, 30)
+```
+
+> 코틀린은 교환 법칙을 지원하지 않아.
+> 만약 1.5 * POINT 였다면 Double 에 Point 를 곱하는 연산자를 추가 해야 해.
+
+산술 연산자를 커스텀하기 위해서 필요한 함수 이름을 정리해봤어.
+
+|   식   | 함수 이름          |
+|:-----:|:---------------|
+| a * b | time           |
+| a / b | div            |
+| a % b | mod(1.1부터 rem) |
+| a + b | plus           |
+| a - b | minus          |
+
+
+비트 연산은 산술 연산자 처럼 특별한 연산자 함수를 제공하지 않아.
+대신 중위 연산자 표기법을 지원하지.
+
+| 중위 연산자 표기법 | 설명   |
+|:----------:|:-----|
+|    shl     | \>>  |
+|    shr     | <<   |
+|    ushr    | \>>> |
+|    and     | &    |
+|     or     | \|   |
+|    xor     | ^    |
+|    inv     | ~    |
