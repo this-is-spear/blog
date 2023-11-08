@@ -283,15 +283,15 @@ println(Point(10, 20) * 1.5) // result : Point(15, 30)
 비트 연산은 산술 연산자 처럼 특별한 연산자 함수를 제공하지 않아.
 대신 중위 연산자 표기법을 지원하지.
 
-| 중위 연산자 표기법 |    설명     |
-|:----------:|:---------:|
-|    shl     |  &lt&lt   |
-|    shr     |  &rt&rt   |
-|    ushr    | &rt&rt&rt |
-|    and     |     &     |
-|     or     |    \|     |
-|    xor     |     ^     |
-|    inv     |     ~     |
+| 중위 연산자 표기법 |   설명   |
+|:----------:|:------:|
+|    shl     |  \<\<  |
+|    shr     |  \>\>  |
+|    ushr    | \>\>\> |
+|    and     |   &    |
+|     or     |   \|   |
+|    xor     |   ^    |
+|    inv     |   ~    |
 
 그리고 복합 대입 연산자도 지원해줘.
 
@@ -389,5 +389,43 @@ println(point) // Point(42, 20)
 
 ### in
 
+컬렉션에 원소가 포함되는지 확인하는 연산을 제공 해.
+
+```kotlin
+data class Point(val x: Int, val y: Int)
+
+operator fun Point.contains(i: Int): Boolean {
+    return x ==  i || y == i
+}
+
+println(3 in Point(3, 2)) // true
+```
 
 ### rangeTo
+
+범위를 만드려면 `rangeTo` 연산을 확장하면 돼.
+`rangeTo`는 `Comparable` 인터페이스를 구현하면 정의할 필요가 없어.
+
+## 구조 분해 선언
+
+### 복합적인 값
+
+구조 분해를 사용하면 복합적인 값을 한 번에 초기화 가능해.
+
+```kotlin
+data class Point(val x: Int, val y: Int)
+val (x, y) = Point(3, 2)
+```
+
+내부적으로는 `componentN`이라는 메서드를 사용하지.
+
+```kotlin
+data class Point(val x: Int, val y: Int)
+val p = Point(3, 2)
+val (x, y) = p.component1() to p.component2()
+```
+
+> 복합적인 값을 한 번에 선언하는 건 최대 다섯 개까지만 되니 주의해야 해.
+
+
+
