@@ -1,9 +1,198 @@
 ---
-title: Kotlin IN ACTION |
+title: Kotlin IN ACTION | 고차 함수
 date: '2023-11-15'
 tags: ['책', '코틀린', '코틀린 인 액션']
-draft: true
+draft: false
 summary: 코틀린 인 액션 8장, 9장 읽고 정리
 images: []
 ---
 
+# Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+# 8장 : 고차 함수
+
+고차 함순느 람다를 인자로 받거나 반환하는 함수를 말해. 고차 함수를 활용하면 코드 중복을 없애고 높은 추상화를 추구 할 수 있지.
+그리고 람다로 인한 성능상 부가 비용을 줄여 유연하게 흐름을 제어 할 수 있는 인라인 함수도 존재해.
+
+## 고차 함수
+
+초차 함수는 다른 함수를 인자로 받거나 함수를 반환하는 함수를 말 해.
+
+### 함수를 인자로 받는 고차 함수
+
+인자로 받는 경우 다음처럼 구현 할 수 있어.
+
+```kotlin
+val sum1 = { x: Int, y: Int -> x + y }
+val sum2: (Int, Int) -> Int = { x, y -> x + y }
+```
+
+인자로 받을 때 주의사항은 반환 값이 `null` 일 수 있고, 함수 타입이 `null` 일 수 있어.
+반환 값이 `null` 인 경우는 다음과 같아.
+
+```kotlin
+val returnNull = { x: Int, y: Int -> null }
+```
+
+함수 타입이 `null`인 건 다음처럼 표시 해.
+
+```kotlin
+val funNull: ((Int, Int) -> Int)? = null
+```
+
+둘은 차이가 있으니 신중하게 사용해야 해.
+
+인자로 받는 함수는 다음처럼 정의 할 수 있어.
+
+```kotlin
+fun function1(/*파라미터 이름*/operation: /*파라미터 함수 타입*/(Int, Int) -> Int) {
+    val result = operation(2, 3)
+    println("$result")
+}
+```
+
+우리는 이전에 디폴트 파라미터를 지정할 수 있음을 배웠어.
+함수를 인자로 받을 때에도 활용 가능 해.
+
+```kotlin
+fun <T> Collection<T>.joinToString(
+    transform: (T) -> String = {it.toString()}
+): String {
+    val result = StringBuilder()
+    for ((index, element) in this.withIndex()) {
+        if (index > 0) result.append(", ")
+        result.append(transform(element))
+    }
+    return result.toString()
+}
+```
+
+### 함수를 반환하는 고차 함수
+
+프로그램 상태나 조건에 따라 달라질 수 있는 로직이 있을 경우 함수를 반환하는 게 좋은 방법일 수 있어.
+작성하는 방법은 반환 받은 함수를 변수에 저장하고 변수를 사용 할 때 인자를 추가하면 돼.
+
+```kotlin
+fun getStringToDouble(): (String) -> Double {
+    return { it.toDouble() }
+}
+
+val double = getStringToDouble()
+println("${double("123.0")}")
+```
+
+## 인라인 함수
+
+인라인 함수는 컴파일 타임에 바이트 코드로 호출한 함수에 추가하는 방식을 말해.
+덕분에 람다가 실행될 때마다 발생하는 무명 클래스 생성 비용을 줄일 수 있어.
+
+```kotlin
+inline fun <T> synchronized(lock: Lock, action: () -> T): T {
+    lock.lock()
+    try {
+        return action()
+    } finally {
+        lock.unlock()
+    }
+}
+```
+
+### 인라인 함수 작동하는 방식
+
+다음과 같은 상황에서 인라인 키워드를 적용하지 않을 경우와 적용할 경우를 비교했어.
+
+```kotlin
+fun foo(l: Lock) {
+    println("Before")
+    synchronized(l) {
+        println("Hi")
+    }
+    println("After")
+}
+```
+
+인라인 키워드를 적용하지 않는 경우에는 `InlineHelloKt` 클래스 인스턴스를 생성하고 메서드를 호출하는 모습을 볼 수 있어.
+
+```
+L2
+LINENUMBER 10 L2
+ALOAD 0
+GETSTATIC MainKt$foo$1.INSTANCE : LMainKt$foo$1;
+CHECKCAST kotlin/jvm/functions/Function0
+INVOKESTATIC InlineHelloKt.synchronized (Ljava/util/concurrent/locks/Lock;Lkotlin/jvm/functions/Function0;)Ljava/lang/Object;
+POP
+```
+
+인라인 키워드를 적용한 경우는 다음 내부에 메서드 호출 없이 `synchronized` 내부에 존재하는 메서드가 호출 된 모습을 볼 수 있어.
+
+```
+L2
+LINENUMBER 20 L2
+FRAME FULL [java/util/concurrent/locks/Lock I] [java/lang/Throwable]
+ASTORE 2
+```
+
+쉽게 성능 튜닝하기 어려운데 인라인을 활용하면 쉽게 가능하기 때문에 적극적으로 사용하면 좋아보여.
+**하지만** 인라인 함수는 제약이 많아.
+
+인라인 함수 본문에서 람다 식을 바로 호출하거나 람다 식을 인자로 전달받아 바로 호출하는 경우에만 인라이닌을 사용 할 수 있어.
+만약 인라인 함수 본문에서 변수로 저장한다면 코틀린은 인라이닌을 어떻게 할지 어려워 해.
+
+즉, 이런식으로는 힘들다는거지.
+
+```kotlin
+inline fun <T> synchronized(lock: Lock, action: () -> T): T {
+    lock.lock()
+    try {
+        val action1 = action // Illegal usage of inline-parameter 'action' !!
+        return action()
+    } finally {
+        lock.unlock()
+    }
+}
+```
+
+이런 경우 `noinline` 키워드를 추가하거나 `inline` 키워드를 지워야 해.
+
+## 고차 함수 안에서 흐름 제어
+
+### 람다는 논 로컬 리턴이다.
+
+보통 루프문에서 return을 수행한다면 바깥에 있는 블록을 반환하게 돼. 이런 걸 non-local return 이라고 해.
+코틀린은 레이블을 지정하면 루프문에서 local return 할 수 있어.
+
+```kotlin
+fun look(people: List<String>) {
+    people.forEach label@/*lambda 레이블*/{
+        if (it.startsWith("hello")) return@label/*return expression 레이블*/
+    }
+}
+```
+
+아니면 메서드 이름을 레이블로 지정 할 수 있지.
+
+```kotlin
+fun look(people: List<String>) {
+    people.forEach {
+        if (it.startsWith("hello")) return@forEach
+    }
+}
+```
+
+### 무명 함수는 로컬 리턴이다.
+
+무명 함수에서 반환문을 작성하면 함수가 닫히기 때문에 local return이야.
+
+```kotlin
+fun look(people: List<String>) {
+    people.forEach(
+        fun(it) {
+            if (it.startsWith("hello")) return
+        }
+    )
+}
+```
+
+# 9장
