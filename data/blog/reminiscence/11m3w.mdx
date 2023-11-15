@@ -1,0 +1,49 @@
+---
+title: 11월 3주 있었던 일 정리
+date: '2023-11-17'
+tags: ['회고']
+draft: true
+summary: fly away thumbnail
+images: []
+---
+
+## Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 썸네일 전달 서비스 구축
+
+### 캐시된 데이터를 응답 본문에 추가하려면
+
+ResponseCacheManager 에 대한 이해가 필요했어. ResponseCacheManager#filter 메서드 동작은 다음과 같아.
+
+1. GET 요청이 있는지 확인한다.
+2. 키를 활용해 캐시가 존재하는지 확인한다.
+3. 캐시가 있을 때
+    1. 동일한 요청 헤더 `Cache-control` 이 `no-cache`인 경우 `304`를 반환한다.
+    2. 캐시가 있을 때 동일한 요청 헤더 `Cache-control` 이 `no-cache` 가 아닌 경우 게이트웨이에 저장된 응답 데이터를 반환한다.
+    3. 캐시가 있을 때 동일한 요청 헤더 `Cache-control` 이 `no-stored`인 경우 원본을 가져온다.
+4. 캐시가 없는 경우
+    1. 캐싱 할 수 있는지 확인한다.
+    2. 데이터를 캐싱한다.
+
+어떤 값으로 캐시 데이터를 찾는지 궁금할거야 그래서 찾아봤어.
+키를 저장 할 때 URI, 인증 정보, 쿠키 정보들로 비교하게 돼.
+
+```java
+public class CacheKeyGenerator {
+
+	private final ThreadLocal<MessageDigest> messageDigest;
+
+	/* for testing */ static final List<KeyValueGenerator> DEFAULT_KEY_VALUE_GENERATORS = List.of(
+			new UriKeyValueGenerator(), new HeaderKeyValueGenerator(HttpHeaders.AUTHORIZATION, KEY_SEPARATOR),
+			new CookiesKeyValueGenerator(KEY_SEPARATOR));
+
+    //...
+```
+
+저장되는 키를 캡쳐해봤어.
+
+![그림 3](/static/images/11m3w/1.png)
+
+
