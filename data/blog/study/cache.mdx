@@ -124,8 +124,24 @@ public class ResponseCacheManager {
 }
 ```
 
-아직 게이트웨이에는 `if-none-match`와 `if-modified-science`를 식별 할 수 있는 기능을 제공하고 있지 않는 듯 해.
-음... 의도가 있었을 듯 한데 아직까지는 파악하지 못했어. 관련 문서를 조금 더 찾아보고 키 값에 식별 할 수 있도록 수정 할 수 있어보여.
+아직 게이트웨이에는 `if-none-match`와 `if-modified-science`를 식별 할 수 있는 기능을 제공하고 있지 않는 듯 했지만 제공하고 있었어.
+모든 헤더 값들을 비교하고 있었지.
+
+```java
+public class CacheKeyGenerator {
+	/* for testing */ static final List<KeyValueGenerator> DEFAULT_KEY_VALUE_GENERATORS = List.of(
+			new UriKeyValueGenerator(), new HeaderKeyValueGenerator(HttpHeaders.AUTHORIZATION, KEY_SEPARATOR),
+			new CookiesKeyValueGenerator(KEY_SEPARATOR));
+
+
+	private Stream<KeyValueGenerator> getKeyValueGenerators(List<String> varyHeaders) {
+		return Stream.concat(DEFAULT_KEY_VALUE_GENERATORS.stream(),
+				varyHeaders.stream().sorted().map(header -> new HeaderKeyValueGenerator(header, ",")));
+	}
+}
+```
+
+없었다면 의도를 파악하고 나도 기여 할 수 있는건가?! 생각했지만 나에게 기회는 없었지 흑흑... 다른 방법으로도 기여 할 수 있을지 찾아봐야겠어.
 
 ## 참고 자료
 
