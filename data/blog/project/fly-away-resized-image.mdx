@@ -198,8 +198,8 @@ public class CacheKeyGenerator {
 	/* for testing */ static final List<KeyValueGenerator> DEFAULT_KEY_VALUE_GENERATORS = List.of(
 			new UriKeyValueGenerator(), new HeaderKeyValueGenerator(HttpHeaders.AUTHORIZATION, KEY_SEPARATOR),
 			new CookiesKeyValueGenerator(KEY_SEPARATOR));
-
     //...
+}
 ```
 
 저장되는 키를 캡쳐 해봤어.
