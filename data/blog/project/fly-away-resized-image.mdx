@@ -1,15 +1,11 @@
 ---
-title: 11월 3주 있었던 일 정리
-date: '2023-11-17'
-tags: ['회고']
+title: 쉽고 빠른 이미지 관리
+date: '2023-11-19'
+tags: ['프로젝트', '회고']
 draft: false
-summary: fly away thumbnail
+summary: 이미지 리사이징 프로젝트 회고
 images: []
 ---
-
-## Introduction
-
-<TOCInline toc={props.toc} exclude="Introduction" />
 
 ## 리사이즈된 이미지 전달 서비스
 
@@ -19,8 +15,30 @@ images: []
 마침 사이드 프로젝트로 여러 기술을 사용하고 싶었고, 관리 문제를 해결 할 수 있어보여서 도와주기로 했어!
 
 프론트엔드 팀은 리사이즈 된 이미지, 압축된 이미지, 크롭한 이미지를 적재적소에 사용해야 하는데 많은 이미지를 어떻게 관리할지 고민하고 있었어.
+저장-관리 비용을 생각했을 때 `webp`, `png` 등으로 관리하고 최소 2 개 이상의 사이즈를 사용한다면 비용이 대략 `N^3` 사이즈가 필요하다고 생각 할 수 있지.
+
+![그림 2](/static/images/project/fly-away-resized-image/2.png)
+
+조금 더 세밀하게 따져볼까?
+대략 한 달에 500개 정도의 이미지를 업데이트한다고 생각하고.
+이미지는 평균 3MB 라고 생각해보자.
+
+요청 1000회당 0.0045 USD 면 연간 0.027 USD 이라는 비용이 발생 해.
+
+![그림 2](/static/images/project/fly-away-resized-image/4.png)
+
+리사이즈된 친구들은 보통 압축되어 작은 사이즈로 만들어져.
+리사이즈된 친구들을 모두 모은 크기가 원본 사이즈랑 동일하다고 생각해볼게.
+그럼 6,000 * 6MB 이니 연간 36GB 데이터가 필요하지. 0.0024 * 36 = 0.0864 USD 가 필요해.
+
+![그림 2](/static/images/project/fly-away-resized-image/5.png)
+
+계산해보면 연간 대략 0.1 USD 가 필요해. 생각보다 사이즈가 안되니 비용 측면에서는 전혀 신경쓸 일이 없어.
+
 가장 무서운 건 저장소에는 데이터가 계속 쌓인다는 점이야.
 특정한 이미지를 삭제하려면 관련된 이미지도 삭제해야 하는데 이런 부분을 관리하기가 되게 까다로워.
+
+![그림 2](/static/images/project/fly-away-resized-image/3.png)
 
 ### 프론트 입장에서 생각해보자.
 
@@ -79,7 +97,46 @@ sequenceDiagram
 
 그래서 리사이즈 서비스와 스프링 클라우드 게이트를 활용한 `CDN`을 구축해봤어.
 
-### 마지막으로
+### 코루틴을 활용한 서버 구축
 
-한 주간 변환된 이미지를 전달하고 관리하는 서비스를 만들면서 `어떻게하면 효율적으로 일 할 수 있을까?`혹은 `어떻게 하면 내가 한 일이 빛을 발휘할까?`를 고민했어.
-다양한 사람들
+최근 코틀린을 학습하기도 했고
+
+
+### 클라우드 게이트웨이를 활용한 CDN 구축
+
+클라우드 게이트웨이를 활용해 `CDN`을 구축하기 위해서는 `ResponseCacheManager` 에 대한 이해가 필요했어.
+`ResponseCacheManager#filter` 메서드 동작은 다음과 같아.
+
+1. `GET` 요청이 있는지 확인한다.
+2. 키를 활용해 캐시가 존재하는지 확인한다.
+3. 캐시가 있을 때
+    1. 동일한 요청 헤더 `Cache-control` 이 `no-cache`인 경우 `304`를 반환한다.
+    2. 캐시가 있을 때 동일한 요청 헤더 `Cache-control` 이 `no-cache` 가 아닌 경우 게이트웨이에 저장된 응답 데이터를 반환한다.
+    3. 캐시가 있을 때 동일한 요청 헤더 `Cache-control` 이 `no-stored`인 경우 원본을 가져온다.
+4. 캐시가 없는 경우
+    1. 캐싱 할 수 있는지 확인한다.
+    2. 데이터를 캐싱한다.
+
+어떤 값으로 캐시 데이터를 찾는지 궁금할거야 그래서 찾아봤어.
+키를 저장 할 때 URI, 인증 정보, 쿠키 정보들로 비교하게 돼.
+
+```java
+public class CacheKeyGenerator {
+
+	private final ThreadLocal<MessageDigest> messageDigest;
+
+	/* for testing */ static final List<KeyValueGenerator> DEFAULT_KEY_VALUE_GENERATORS = List.of(
+			new UriKeyValueGenerator(), new HeaderKeyValueGenerator(HttpHeaders.AUTHORIZATION, KEY_SEPARATOR),
+			new CookiesKeyValueGenerator(KEY_SEPARATOR));
+
+    //...
+```
+
+저장되는 키를 캡쳐 해봤어.
+
+![그림 2](/static/images/project/fly-away-resized-image/1.png)
+
+### 기술 트렌드 따라가는 일 재밌네...
+
+- 요즘 새로운 기술들을 읽으면서 도입하고 있어. CDN이 필요했고 CDN에 저장되는 데이터를 직접 핸들링하는 일도 재밌어보였지.
+
