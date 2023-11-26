@@ -18,7 +18,7 @@ images: []
 운영 환경에서 heap 공간이 부족해서 OOM이 발생했어.
 모니터링으로 확인했을 때 한 번의 요청에서 정말 많은 메모리가 필요했어.
 
-![그림 2](/static/images/11m1w/2.png)
+![그림 2](/static/images/reminiscence/11m1w/2.png)
 
 사용한 메모리 양이 2.3GB 밖에 되지 않았지만 OOM 이슈가 발생했어.
 물리 메모리를 넘어서 많은 메모리를 사용하게 되면 스와핑이 발생하는 게 맞지 않나 생각이 들었지.
@@ -30,7 +30,7 @@ images: []
 
 다시 문제로 돌아오자면 전체 실행 시간을 봤을 때 메모리 소실이 존재하지 않았어.
 
-![그림 3](/static/images/11m1w/3.png)
+![그림 3](/static/images/reminiscence/11m1w/3.png)
 
 ### 해결 과정
 
@@ -45,12 +45,12 @@ images: []
 
 메모리 크기 변경 이후 정상적으로 문제가 해결 됐어.
 
-![그림 4](/static/images/11m1w/4.png)
+![그림 4](/static/images/reminiscence/11m1w/4.png)
 
 마지막으로 할당하는 메모리 용량의 크기가 커지면서 다른 서비스들과 메모리 할당 문제가 발생할 수 있어보였어.
 지금은 80% 가량의 물리 메모리를 사용하고 있어.
 
-![그림 5](/static/images/11m1w/5.png)
+![그림 5](/static/images/reminiscence/11m1w/5.png)
 
 현재가 요청량의 피크라고 생각해 그 이상의 메모리 증설을 하지 않을 계획이야.
 
@@ -68,7 +68,7 @@ images: []
 
 오랜만에 JVM 메모리도 학습할 수 있었어.
 
-![그림 1](/static/images/11m1w/1.png)
+![그림 1](/static/images/reminiscence/11m1w/1.png)
 
 ## 나의 고민
 
