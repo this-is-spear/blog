@@ -1,0 +1,66 @@
+---
+title: 12월 2주 있었던 일 정리
+date: '2023-12-10'
+tags: ['회고']
+draft: false
+summary: 워크샵 다녀오고 부랴부랴 했던 일 정리
+images: []
+---
+
+## Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 문서 정리
+
+이번 주는 문서 정리에 힘을 썼어.
+회사에 기여 할 수 있는 방법은 정보를 최신화하는 일이야.
+최신화한 정보 덕분에 원활한 의사소통이 가능해질거고 그로 인해 업무 능률이 높아질 것이라 생각했어.
+
+작업은 다음과 같이 나눌 수 있었어.
+
+- 최신 문서, 이전 문서 분리
+- 옛날 정보 수정
+
+급한 건 첫 번째였지만 당장 해야 할 업무와 겹치는 두 번째 작업을 먼저 하기로 했지.
+실은 진행하던 업무가 옛날 정보로 인해 진행이 더딘 상황이었거든.
+그래서 진행하던 업무 경계에 걸친 옛날 정보들을 수정하고 최신 문서와 이전 문서를 분리해 버저닝을 해볼까 해.
+
+## 사내 스터디 준비
+
+가상 면접 사례로 배우는 대규모 시스템 설계 기초 책을 활용해 사내 스터디를 진행하고 있어.
+그 중 1 장을 정리하고 있던 중 일부를 요약해봤어.
+
+1장인 사용자 수에 따른 규모 확장성 챕터를 읽으며 수백 만 사용자를 지원하는 시스템 설계는 지속적인 계량과 끝없는 개선이 요구되는 것을 알게 됐지.
+즉, 한 명의 사용자를 지원하는 시스템에서 몇 백만 사용자를 지원하는 시스템을 설계하면서 규모에 따른 시스템 변화를 파악해야 하는 것을 알게 됐어.
+
+그 과정에서 각 단계마다 어떤 요인을 신경써야하는지 파악 할 수 있어서 관심사를 적절하게 분리 할 수 있었지.
+
+<table>
+    <thead>
+    <tr>
+        <th>서버</th>
+        <th>데이터베이스</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td>
+            ![그림 1](/static/images/reminiscence/12m2w/1.png)
+        </td>
+        <td>
+            ![그림 2](/static/images/reminiscence/12m2w/2.png)
+        </td>
+    </tr>
+    </tbody>
+</table>
+
+캐시에서도 꽤나 좋은 인사이트를 얻었지.
+상황에 따라 원하는 전략을 설정하면 데이터베이스 호출 횟수도 줄일 수 있었어.
+
+- [Read-Through/Write-Through versus Cache-Aside](https://docs.oracle.com/cd/E15357_01/coh.360/e15723/cache_rtwtwbra.htm#CHDJHAEG)
+- [Refresh-Ahead versus Read-Through](https://docs.oracle.com/cd/E15357_01/coh.360/e15723/cache_rtwtwbra.htm#CHDIAGJA)
+- [Write-Behind versus Write-Through](https://docs.oracle.com/cd/E15357_01/coh.360/e15723/cache_rtwtwbra.htm#CHDHECHF)
+
+전략들만 찾아봤고 아직 정리하지 못했어.
+여유가 될 때 읽어보고 정리해야 겠어.
