@@ -43,7 +43,7 @@ images: []
 
 ![image](/static/images/reminiscence/12m4w/4.png)
 
-### 있었던 이슈
+### 있었던 이슈 1 - zipkin oom
 
 토이 프로젝트로 진행해보고 있는데, `oom`이 발생했어.
 기존 `memory` 저장소를 사용 할 때는 쌓이는 데이터가 적어 조회할 때 많은 메모리가 필요하지 않았지만, `elasticsearch`로 변경하게 되면서 데이터 조회에 많은 메모리가 필요하게 된게 원인으로 보였어.
@@ -64,6 +64,56 @@ zipkin:
 데이터를 10,000 개 요청하는 경우 10초 가량이 걸리기도 했어.
 
 ![image](/static/images/reminiscence/12m4w/1.png)
+
+### 있었던 이슈 2 - system vm max map count is too low
+
+시스템 가상 메모리 공간이 부족할 수 있으니 늘릴 필요가 있다고 함.
+`vm.max_map_count`는 어떤 값을 의미할까?
+
+```
+ERROR: [1] bootstrap checks failed. You must address the points described in the following [1] lines before starting Elasticsearch.
+bootstrap check failure [1] of [1]: max virtual memory areas vm.max_map_count [65530] is too low, increase to at least [262144]
+ERROR: Elasticsearch did not exit normally - check the logs at /elasticsearch/logs/docker-cluster.log
+```
+
+이 문제는 할당 가능한 맵의 수를 늘리면 돼.
+
+```shell
+sysctl -w vm.max_map_count=262144
+```
+
+그런데 맵이 어떤 의미인지 궁금해서 찾아봤어.
+[kernel.org](https://www.kernel.org/doc/Documentation/sysctl/vm.txt) 에 따르면 다음과 같이 설명하고 있어.
+
+```
+max_map_count:
+
+This file contains the maximum number of memory map areas a process
+may have. Memory map areas are used as a side-effect of calling
+malloc, directly by mmap, mprotect, and madvise, and also when loading
+shared libraries.
+
+While most applications need less than a thousand maps, certain
+programs, particularly malloc debuggers, may consume lots of them,
+e.g., up to one or two maps per allocation.
+
+The default value is 65536.
+```
+
+이 파일에는 프로세스가 가질 수 있는 최대 메모리 맵 영역 수가 포함되는데, 메모리 맵이 어떤 의미인지 파악할 필요가 있었지.
+[위키](https://en.wikipedia.org/wiki/Memory_map)에 따르면 메모리 맵은 메모리가 배치되는 방식을 나타내는 데이터 단위라고 설명하며 상황에 맞게 의미가 변화한다고 해.
+그 중 이 말이 제일 맞아보여.
+
+```
+In virtual memory implementations and memory management units,
+a memory map refers to page tables or hardware registers,
+which store the mapping between a certain process's virtual
+memory layout and how that space relates to physical memory addresses.
+```
+
+메모리 맵은 특정 프로세스의 가상 메모리 레이아웃 간의 매핑된 페이지 테이블 또는 하드웨어 레지스터를 나타낸다고 해.
+즉 할당 가능한 메모리 수를 늘려야 한다는 의미야.
+`elasticsearch`는 메모리 할당이 많이 필요한 시스템이라는 것을 알게 됐어.
 
 ### 마지막으로
 
