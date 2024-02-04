@@ -54,9 +54,9 @@ where a = b;
 
 **하지만** 실제 설정된 `collation` 변수를 확인 했을 때 `utf8mb4_unicode_ci` 와 연관된 설정 값은 없었다. 설정된 변수는 다음과 같았다.
 
-- `**connection collation**`은 `utf8mb3_genenral_ci`
-- `**database collation**`은 `utf8mb4_general_ci`
-- `**server collation**`은 `latin1_swedish_ci`
+- `connection collation`은 `utf8mb3_genenral_ci`
+- `database collation`은 `utf8mb4_general_ci`
+- `server collation`은 `latin1_swedish_ci`
 
 문제 원인을 분석하자면 두 가지다.
 
