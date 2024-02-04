@@ -7,9 +7,13 @@ summary: 트러블 슈팅 과 심층 분석
 images: []
 ---
 
-# 문제
+## Introduction
 
-## 이슈 내용
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 문제
+
+### 이슈 내용
 
 마이그레이션 작업 배포 과정에서 다음과 같은 문제가 발생했고, 롤백이 진행됐다.
 
@@ -20,7 +24,7 @@ and (utf8mb4_general_ci,IMPLICIT) for operation '='
 
 코드 수정이 없던 상황이라 문제 파악이 어려웠다.
 
-## 이슈 분석
+### 이슈 분석
 
 문제 상황을 간단하게 재현했다.
 
@@ -59,9 +63,9 @@ where a = b;
 - 비교 할 수 없어서 결과를 받아 올 수 없었다.
 - 설정된 값과 다른 `utf8mb4_unicode_ci` 값으로 `**connection collation**`이 설정되어 있다.
 
-# 원인
+## 원인
 
-## 1. 왜 설정 값과 다른 값으로 변경됐는지
+### 1. 왜 설정 값과 다른 값으로 변경됐는지
 
 우선 `utf8mb4_unicode_ci` 값이 어떻게 전달되게 되는지 확인해보기로 했다. 데이터베이스 설정 값은 변경되지 않았지만, 마이그레이션 이후 발생하게 됐다. 그래서 mariadb client 를 먼저 확인했다.
 
@@ -95,7 +99,7 @@ public static byte decideLanguage(InitialHandshakePacket handshake) {
 
 즉, `server character set`이 `latin1`(code 값이 5)로 설정되어 있어서 **connection collation**이 `utf8mb4_unicode_ci`로 설정되어 버린다.
 
-## 2. 왜 비교할 수 없는지
+### 2. 왜 비교할 수 없는지
 
 원하는 값이 출력되지 않을 수 있기 때문이다. 값을 비교할 때 정렬 방법으로 동일한 문자인지를 확인하게 된다. 각 다른 character set 과 collate를 설정한 다음 동일한 데이터를 추가해보겠다.
 
@@ -146,10 +150,7 @@ SELECT * FROM germanutf8 WHERE c = 'Bär';
 
 그럼 `collation이 다르면 항상 에러가 발생하는가?`라고 하면 그건 또 아니다. mysql은 쿼리를 실행할 때 딱 하나의 collation만 사용하기 위해 결정하는 과정을 거친다. 이 때 어떤 collation을 사용할지 결정하기 위해 호환성을 파악하게 된다.
 
-<aside>
-    💡 어떤 순서로 결정을 하는지는 해당 [링크](https://dev.mysql.com/doc/refman/8.0/en/charset-collation-coercibility.html)에서 확인 할 수 있다.
-
-</aside>
+> 어떤 순서로 결정을 하는지는 해당 [링크](https://dev.mysql.com/doc/refman/8.0/en/charset-collation-coercibility.html)에서 확인 할 수 있다.
 
 **우선 둘 다 유니코드이지만 collation이 다른 경우 오류가 발생하고,  둘 다 유니코드가 아닌 경우도 오류가 발생한다.**
 
