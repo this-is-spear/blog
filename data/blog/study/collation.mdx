@@ -71,16 +71,7 @@ where a = b;
 
 그럼 collation 설정 값을 변경하는 시점이 존재하게 됨을 추측해볼 수 있다. mariadb의 커넥션을 얻기 위해 핸드셰이크 과정을 거치는 모습을 먼저 확인했다. 핸드셰이크 과정에서 client의 character set과 collation을 전달하면 mariadb는 client에 맞는 커넥션 설정을 진행하게 된다. (해당 [링크](https://mariadb.com/kb/en/connection/#initial-handshake-packet)에서 확인 가능하다.)
 
-```mermaid
-sequenceDiagram
-	title: 핸드셰이크 과정
-	participant client
-	participant database
-	database ->> client : 서버 관련된 정보를 전달한 시작
-	client ->> database : 클라이언트의 character set, collation 정보를 포함한 응답
-	database ->> client : 응답에 대한 OK 응답
-
-```
+![images](/static/images/study/collation/1.png)
 
 변경된 원인은 `decideLanguage` 로 인한 `collation` 설정이 변경되는 문제였다.
 
