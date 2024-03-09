@@ -1,0 +1,131 @@
+---
+title: 3월 1주 있었던 일 정리
+date: '2024-02-12'
+tags: ['회고', '오픈소스', '픽스처몽키']
+draft: false
+summary:
+images: []
+---
+
+## Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 오픈소스 기여 활동
+
+### 개요
+
+`fixture monkey`를 속성 테스트 말고도 픽스처 사용에도 적극 활용중이다. 잘 활용하고 싶어서 [코드 수정으로 기여해보고 있다.](https://github.com/naver/fixture-monkey/pull/929)
+
+### 설명
+
+모든 객체 내부 프로퍼티는 어느 순간 기본 자료형으로 표현할 수 있다. `fixture-monkey`는 객체를 재귀적으로 읽어 기본 자료형이 나오면 `jqwik`이 기본 자료형 값을 임의로 생성할 수 있도록 반환한다.
+
+`KotlinPropertyGenerator` 에서 `property` 정보를 읽어 현재 진행하는 작업 문맥에 저장한다. 그리고 `PrimaryConstructorArbitraryIntrospector` 에서 생성자에 필요한 파라미터를 읽어 매핑하게 된다.
+
+이 때, `Duration` 클래스로 생성자 주입을 할 경우 일정 범위의 `Long` 값만 허용하는 제약이 존재하게 된다.
+
+```kotlin
+class Duration constructor(private val rawValue: Long) {
+    private val value: Long get() = rawValue shr 1
+
+    init {
+        if (durationAssertionsEnabled) {
+            if ((rawValue.toInt() and 1) == 0) {
+		            // value는 나노초 범위어야 한다.
+            } else {
+		            // value는 나노초 범위에 포함되면 안된다.
+                // value는 밀리초 범위여야 한다.
+            }
+        }
+    }
+
+	...
+}
+```
+
+그래서 `Long` 값을 `Duration` 값으로 전환할 때 제약사항 없이 올바르게 매핑 해주는 `Long` 확장 함수를 이용했다.
+
+```kotlin
+public fun Long.toDuration(unit: DurationUnit): Duration { /* ... */ }
+```
+
+### 해결 과정
+
+고려해야 할 점은 매핑하는 방법이며 `Duration` 클래스를 변환하는 객체와 `Duration` 을 포함하는 클래스를 변환하는 객체였다.
+첫 번째는 `Duration`을 만나면 반환하도록 구현한 코드다.
+
+```kotlin
+class KotlinDurationIntrospector : ArbitraryIntrospector, Matcher {
+    override fun match(property: Property) = DURATION_TYPE_MATCHER.match(property)
+
+    override fun introspect(context: ArbitraryGeneratorContext): ArbitraryIntrospectorResult {
+        val kClass = Duration::class
+        val parameterName = kClass.primaryConstructor.parameters[0].name
+
+        return ArbitraryIntrospectorResult(
+            CombinableArbitrary.objectBuilder()
+                .properties(context.combinableArbitrariesByArbitraryProperty)
+                .build {
+                    val parameterValue = it.mapKeys {/*...*/}[parameterName]
+                    /* return */
+                    parameterValue.toDuration(DurationUnit.values().random())
+                }
+        )
+    }
+}
+```
+
+> 간단하게 설명하자면 Fixture Monkey는 등록된 ArbitraryIntrospector를 모아 생성하는 규칙을 만들고 규칙에 맞는 값을 jqwik에서 전달받는다.
+
+두 번째 문제는 `Duration` 프로퍼티에 제공되는 `Long` 값에서 `Duration` 값으로 변환되도록 수정할 수 있다.
+
+```kotlin
+class PrimaryConstructorArbitraryIntrospector : ArbitraryIntrospector {
+    override fun introspect(context: ArbitraryGeneratorContext): ArbitraryIntrospectorResult {
+        //...
+
+        val constructor = /* 생성자 정보 획득 */
+        return ArbitraryIntrospectorResult(
+            CombinableArbitrary.objectBuilder()
+                .properties(context.combinableArbitrariesByArbitraryProperty)
+                .build {
+                    val arbitrariesByPropertyName: /*객체 내부 프로퍼티 획득*/
+
+                    val generatedByParameters = mutableMapOf<KParameter, Any?>()
+                    for (parameter in constructor.parameters) {
+                        val resolvedArbitrary = /* 생성자 프로퍼티의 임의 값 생성 */
+
+                        generatedByParameters[parameter] =
+                            if (parameter.type.jvmErasure != Duration::class) {
+                                // ...
+                            // Duration 이라면 Long 값을 Duration 으로 반환하도록 수정
+                            } else {
+                                if (resolvedArbitrary is Long) resolvedArbitrary.toDuration(
+                                    DurationUnit.values().random()
+                                )
+                                else Duration.ZERO
+                            }
+                    }
+                    constructor.callBy(generatedByParameters)
+                },
+        )
+    }
+    ...
+}
+```
+
+### 아쉬웠던 점
+
+아쉬웠던 점은 문제가 원만하게 풀리지 않았다. `jqwik`은 코틀린을 지원하지 않는다. 그렇기에 코틀린 플러그인은 `Long` 값을 읽어 주입하려고 하고 있다. `jqwik` 라이브러리와 코틀린 `Duration`을 함께 사용한다면 문제가 발생한다.
+
+```kotlin
+val one = sut.giveMeBuilder<DurationValue>()
+	// jqwik 은 Duration 클래스를 직접 생성할 수 없다.
+  .set(DurationValue::duration, Duration.INFINITE)
+  .sample()
+
+then(one.duration).isNotEqualTo(Duration.INFINITE)
+```
+
+만약 중간에 값을 가로채서 `long` 값을 `duration` 제약 조건에 맞게 설정하게 된다면 걱정은 없어보인다. 앞으로 어떻게 추가적인 작업을 할지 고민중이다.
