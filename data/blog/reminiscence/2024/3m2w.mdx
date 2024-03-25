@@ -1,0 +1,106 @@
+---
+title: 3월 2주 있었던 일 정리
+date: '2024-03-16'
+tags: ['회고', '개선']
+draft: true
+summary:
+images: []
+---
+
+## 정렬
+
+데이터를 정렬 할 필요가 생겼다. 백오피스에서 정렬 기능이 커스텀으로 구현되어 있어서 pageable 을 사용하도록 수정할지 고민했다.
+수정 이유는 data 라이브러리에서 pageable 이라는 친구를 사용하면 api 부터 sql 까지 일사천리로 진행 가능하기 때문이다.
+
+동작을 간단하게 이야기 해보면 pageable 은 sort 의 값을 읽어 Sort 내부에 저장한다.
+
+```http request
+GET /api/v1/boards?sort=createdAt,desc
+```
+
+그리고 데이터 계층에 던져주면 알아서 잘 매핑되도록 구성되어 있다.
+
+```kotlin
+fun findById(pageable: Pageable): Page<Board>
+```
+
+아쉬운 점은 sort 에 저장된 파라미터가 올바른지 검증하는 로직이 없고 sql 예외를 통해 확인해야 해서 아쉬웠다.
+그리고 일부 데이터 정렬만 제한하기 위해서도 추가 설정이 필요했다.
+
+바꿔야겠다는 결정적인 생각은 `QueryDsl`을 활용해 동적 쿼리 매핑을 진행하고 있어서 데이터 계층에서 25% 정도의 코드를 줄일 수 있어 보였다.
+추가로 복잡도도 줄일 수 있는 기회다.
+
+변경해야 할 API는 8개다... 각 API에 추가된 60라인의 코드를 10라인으로 줄일 수 있어보이고 계속해서 sort 데이터를 전달해줄 필요가 없어져 결합력을 낮출 수 있어보인다.
+
+하지만 행동으로 옮기기에는 조심스러웠다. 이유는 다음과 같다.
+
+- API가 변경되는 위험
+- 조회 로직이라 테스트 코드가 추가되어 있지 않아서 매 번 검증을 진행해야 하는 번거로움이 있다.
+- 백오피스라 업무 중요도가 낮다.
+
+## 고민 시작
+
+### API가 변경되는 위험
+
+가장 위험한건 API가 변경된다는 점이다. 다음처럼 변경해야 해서 프론트에서도 변경이 필요했다.
+버저닝이 없어서 더더욱 고민이 들었다.
+
+**AS-IS**
+
+```http request
+GET /api/boards?column=CREATE_AT&order=desc
+```
+
+**TO-BE**
+
+```http request
+GET /api/boards?sort=createdAt,desc
+```
+
+우선 두 개의 API를 지원할 수 있도록 수정한 다음 UI 계층에서 Pageable을 직접 구현해 유연하게 동작할 필요가 있었다.
+
+### 검증 정책이 없는 점
+
+큰일이다.
+
+그리고 테스트 코드가 없다. 이건 더 큰일이다.
+
+### 백오피스라 업무 중요도가 낮다.
+
+어떡할까...
+
+
+## API 요청에 대한 응답 처리
+
+특정 식별자의 상태를 확인하기 위해 외부 API를 호출해야 하는 상황이 생겼다.
+
+제공자는 식별자를 가지는 도메인 전체 정보를 노출하고 있었다.
+
+이런 경우 소비자 계약을 의미한다. 즉, 제공자는 전체 정보를 제공하고 소비자는 필요한 정보만 가져가는 방식이다.
+소비자 계약의 단점은 제공자가 전체 정보를 노출하기 떄문에 서비스 간 의존도가 높아질 수 있다는 점이다.
+해당 도메인을 조회해야 하는 경우 해당 API를 공통적으로 사용하기 때문에 제공자 API 변경에 부담이 생긴다.
+
+그래서 응답 값으로 접근할 수 있는 데이터를 제한해 공통 API를 제거했다.
+
+```kotlin
+@GetMapping("/정보")
+fun getMembershipPrice(): ApiResult<MembershipPriceResponse>
+```
+
+내가 알고 싶은건 지불했는지 여부이고 `isPaid()` 메서드 외에는 접근할 수 없게 막았다.
+
+```kotlin
+data class MembershipPriceResponse(
+    private val price: Int
+) {
+    @JsonCreator
+    constructor(
+        @JsonProperty("정보")
+        정보: Map<Any, Any>
+    ) : this(정보[가격] as Int)
+
+    fun isPaid(): Boolean {
+        return price > 0
+    }
+}
+```
