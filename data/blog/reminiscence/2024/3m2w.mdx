@@ -103,9 +103,9 @@ data class MembershipPriceResponse(
 ) {
     @JsonCreator
     constructor(
-        @JsonProperty("정보")
-        정보: Map<Any, Any>
-    ) : this(정보[가격] as Int)
+        @JsonProperty("information_data")
+        information: Map<Any, Any>
+    ) : this(information[price] as Int)
 
     fun isPaid(): Boolean {
         return price > 0
