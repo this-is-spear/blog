@@ -75,7 +75,7 @@ API 스펙은 넘어가고 데이터 모델을 살펴보겠다.
 `primary` 에 여러 `secondary` 가 접근한다면 작업량만 늘어나게 된다.
 성능 향상을 위해 `primary`와 `secondary` 사이 읽기만을 처리하는 `secondary`를 추가하는 것도 방법이다.
 
-![그림 1](c/static/images/books/system-design-2/one/1.png)
+![그림 1](/static/images/books/system-design-2/one/1.png)
 
 출처 : https://dev.mysql.com/doc/refman/8.3/en/replication-solutions-performance.html
 
@@ -102,11 +102,11 @@ API 스펙은 넘어가고 데이터 모델을 살펴보겠다.
 
 2차원 검색은 말그대로 범위 검색이다. 예를 들면 경도 범위에 있는 데이터 중 원하는 위도 범위에 있는 데이터를 찾게 된다.
 
-![그림 1](c/static/images/books/system-design-2/one/2.png)
+![그림 1](/static/images/books/system-design-2/one/2.png)
 
 위 케이스처럼 다중 컬럼 인덱스를 건다고 해도 범위에 경도 탐색을 진행할 수 밖에 없다.
 
-![그림 1](c/static/images/books/system-design-2/one/3.png)
+![그림 1](/static/images/books/system-design-2/one/3.png)
 
 위도와 경도 중 데이터가 적은 영역을 기준으로 해도 상상이상으로 많다.
 **절대 이 방법을 고려하면 안된다.** 책에서 이야기 하는 것처럼 하나의 인덱스(1차원)만 속도를 개선해서는 문제를 해결 할 수 없다.
@@ -117,7 +117,7 @@ API 스펙은 넘어가고 데이터 모델을 살펴보겠다.
 균등한 거리로 공간을 나누고 사업장을 담는 방식도 가능하다.
 우리가 해당 공간에 존재한다면 해당 공간을 반환하면 된다.
 
-![그림 1](c/static/images/books/system-design-2/one/4.png)
+![그림 1](/static/images/books/system-design-2/one/4.png)
 
 이 방법의 문제는 균등한 거리가 고정되어서 조회 조건 마다 성능이 달라질 수 있고, 데이터 불균형으로 특정 영역에서 데이터 조회가 비용이 비싸진다.
 
@@ -126,12 +126,12 @@ API 스펙은 넘어가고 데이터 모델을 살펴보겠다.
 지오 해시는 위도 경도 데이터를 문자열로 변환해 표현하는 방식이다.
 비트를 하나씩 늘려나가며 재귀적으로 작은 격자로 분할한다.
 
-![그림 1](c/static/images/books/system-design-2/one/5.png)
+![그림 1](/static/images/books/system-design-2/one/5.png)
 
 작은 격자는 12단계로 나뉘어지게 되고 원하는 영역이 나올 만큼 분할한다.
 아래 그림처럼 최소 크기로 덮을 만큼의 정밀도를 찾아 격자를 반환한다.
 
-![그림 1](c/static/images/books/system-design-2/one/6.png)
+![그림 1](/static/images/books/system-design-2/one/6.png)
 
 생각할 수 있는 문제는 연관되지 않은 범위 밖 데이터가 포함된다는 문제가 있다.
 또한 데이터가 집중되어 있는 경우 조회 비용이 비싸진다는 점도 해결하기 못한다.
@@ -142,7 +142,7 @@ API 스펙은 넘어가고 데이터 모델을 살펴보겠다.
 대충 지도로 표현하면 다음처럼 표현된다.
 데이터가 집중되어서 조회 비용이 비싸지는 문제를 일부 해결할 수 있다.
 
-![그림 1](c/static/images/books/system-design-2/one/7.png)
+![그림 1](/static/images/books/system-design-2/one/7.png)
 
 쿼드트리를 담는 메모리 양이 많아 보일 수 있지만 `말단 노드 데이터 양`과 `내부 노드 데이터 양`을 고려하면 총 메모리 요구량이 작은 편이다.
 
@@ -167,3 +167,4 @@ API 스펙은 넘어가고 데이터 모델을 살펴보겠다.
 
 - [주변 맛집을 찾으려면 어떻게 해야 검색이 빠를까?](https://team-json-delivery.github.io/posts/system-design-interview-proximity-service/)
 - [가게 배달지역 관리방식 개편 프로젝트 | 우아한형제들 기술블로그](https://techblog.woowahan.com/2717/)
+- [Hello, Geo-fence! | 우아한형제들 기술블로그](https://techblog.woowahan.com/2567/)
