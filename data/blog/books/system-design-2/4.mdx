@@ -38,7 +38,7 @@ images: []
 
 |일대일 방식|구독 방식|
 |---|---|
-|![그림 1](/static/images/books/system-design-2/four/2.png)|![그림 1](/static/images/books/system-design-2/four/3.png)|
+|![그림 2](/static/images/books/system-design-2/four/2.png)|![그림 3](/static/images/books/system-design-2/four/3.png)|
 
 
 메시지 큐에서 제공하는 발행-구독 모델과 Redis 등에서 제공하는 발행-구독 모델은 다르다. `redis pub/sub 모델`과 `event streamiong pub/sub 모델`의 궁극적인 차이는 공유 자원의 유무이다.
@@ -134,6 +134,16 @@ public class PubSub {
 ```
 
 `BlockingQueue`를 사용하는 일에서 알 수 있듯이 공유 자원에서 여러 작업이 동시에 발생하면 문제가 발생한다. 운영 체제에서 멀티스레딩 방식 관련해 `생산자-소비자 문제`가 있다. 이 문제는 아래 `pull 모델`에서 설명해보겠다.
+
+메시지 큐 시스템은 토픽, 파티션, 브로커 등으로 메시지를 분산 저장 및 전송한다. 말 그대로 하나의 토픽이 있고, 토픽에는 한 개 이상의 브로커가 소비자들에게 메시지를 중개한다.
+
+> 브로커 이름 참 잘지었다.
+
+대충 동작은 이런 느낌이다.
+
+![그림 4](/static/images/books/system-design-2/four/4.png)
+
+여기에서 만약 브로커가 죽었거나 파티션 데이터가 일부 유실되거나 소비자 그룹이 변경된다면 브로커는 소비자 재조정을 시작한다. 관련 내용은 아래 소비자 재조정에서 진행하겠다.
 
 ## 상세 설계안
 
