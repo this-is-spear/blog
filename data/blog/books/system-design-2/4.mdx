@@ -1,0 +1,155 @@
+---
+title: 4. 분산 메시지 큐
+date: '2024-04-14'
+tags: ['책', '대규모 시스템 설계 기초 2']
+draft: false
+summary: 아키텍처를 단순하게 만든다면 더 많은 메모리를 투입할 만한 가치가 충분하다.
+images: []
+---
+
+책은 대규모 시스템에서 가용 할 수 있는 분신 메시지 시스템 아키텍처를 다루고 있다. 그에 맞게 정리해보겠다.
+
+## 개요
+
+### 메시지 큐를 도입하려는 이유
+
+현대 아키텍처는 서비스 블록 경계를 인터페이스로 나누고 있다. 메시지 큐는 블록 사이 통신과 조율을 담당한다.
+분산 메시지를 적용할 때 이점은 다음과 같다.
+
+- 결합도 완화
+- 규모 확장성 개선
+- 가용성 개선
+- 성능 개선
+
+### 의도한 동작을 잘 해내기 위해선
+
+큐 동작 외에도 성능, 메시지 전달 방식, 데이터 보관 기간 등 고려할 사항은 다양하다.
+그 중 데이터 장기 보관(long data retention) 기능과 메시지 반복 소비(repeated consumption message) 기능을 가진 분산 메시지 큐를 설계해보자.
+
+## 개략적 설계안
+
+메시지 큐는 큐 동작에 충실하다. 메시지를 큐에 담고 소비자가 앞에있는 메시지부터 소비한다.
+
+![그림 1](/static/images/books/system-design-2/four/1.png)
+
+
+메시지 큐는 두 가지 메시지 모델로 나뉜다. 일대일 모델과 발행 구독 모델이다. 일대일 모델은 메시지는 한 소비자만 가져갈 수 있는 방식이고 발행-구독 모델은 해당 토픽(채널)을 구독하는 소비자들에게 메시지를 전달하는 방법이다.
+
+
+|일대일 방식|구독 방식|
+|---|---|
+|![그림 1](/static/images/books/system-design-2/four/2.png)|![그림 1](/static/images/books/system-design-2/four/3.png)|
+
+
+메시지 큐에서 제공하는 발행-구독 모델과 Redis 등에서 제공하는 발행-구독 모델은 다르다. `redis pub/sub 모델`과 `event streamiong pub/sub 모델`의 궁극적인 차이는 공유 자원의 유무이다.
+
+`redis pub/sub 모델`은 다음처럼 메시지를 생산하자마자 전달한다. 만약 구독자가 메시지를 받기는 했지만, 처리 도중 에러가 발생하거나 처리 능력을 초과한다면 메시지가 유실되기도 한다.
+
+```java
+class Channel {
+    String name;
+    Set<Subscriber> subscribers = new HashSet<>();
+
+    Channel(String name) {
+        this.name = name;
+    }
+
+    void subscribe(Subscriber subscriber) {
+        subscribers.add(subscriber);
+    }
+
+    void publish(String message) {
+        for (Subscriber subscriber : subscribers) {
+            subscriber.receiveMessage(name, message);
+        }
+    }
+}
+```
+
+그러나 `event streamiong pub/sub 모델`은 다르다. 큐의 `FIFO`라는 특징은 무조건 데이터를 전달받을 수 있다는 특징을 보장한다.
+
+```java
+class Channel {
+    String name;
+    BlockingQueue<String> messageQueue;
+    List<Subscriber> subscribers = new ArrayList<>();
+
+    Channel(String name, int queueSize) {
+        this.name = name;
+        this.messageQueue = new ArrayBlockingQueue<>(queueSize);
+    }
+
+    void subscribe(Subscriber subscriber) {
+        subscribers.add(subscriber);
+    }
+
+    void publish(String message) {
+        try {
+            messageQueue.put(message);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    void consume() {
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.execute(() -> {
+            while (true) {
+                try {
+                    String message = messageQueue.take();
+                    for (Subscriber subscriber : subscribers) {
+                        subscriber.receiveMessage(name, message);
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+}
+```
+
+main 메서드를 구현했을 때, consum 하기 전 데이터를 가져오는 방식이 달랐다.
+
+```java
+public class PubSub {
+    public static void main(String[] args) {
+        Channel channel1 = new Channel("channel1", 10);
+
+        Subscriber sub1 = new Subscriber("sub1");
+        Subscriber sub2 = new Subscriber("sub2");
+
+        channel1.subscribe(sub1);
+        channel1.subscribe(sub2);
+
+				// Redis Pub/Sub 클래스에서는 유실되지만 Queue Pub/Sub 은 유실되지 않는다.
+        channel1.publish("Hello World! 1");
+
+        channel1.consume();
+
+				// Redis Pub/Sub, Queue Pub/Sub 둘 다 출력된다.
+        channel1.publish("Hello World! 2");
+    }
+}
+```
+
+`BlockingQueue`를 사용하는 일에서 알 수 있듯이 공유 자원에서 여러 작업이 동시에 발생하면 문제가 발생한다. 운영 체제에서 멀티스레딩 방식 관련해 `생산자-소비자 문제`가 있다. 이 문제는 아래 `pull 모델`에서 설명해보겠다.
+
+## 상세 설계안
+
+### 데이터 저장
+
+- 데이터 저장소
+- 메시지 자료 구조
+
+### 대역폭 vs 지연
+
+- 일괄 처리
+- 생산자 측 작업 흐름
+- 소비자 측 작업 흐름
+
+### 푸시 vs 풀
+
+- 푸시
+- 풀
+- 생산자 소비자 문제
