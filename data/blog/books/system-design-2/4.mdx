@@ -40,8 +40,10 @@ images: []
 |---|---|
 |![그림 2](/static/images/books/system-design-2/four/2.png)|![그림 3](/static/images/books/system-design-2/four/3.png)|
 
-
 메시지 큐에서 제공하는 발행-구독 모델과 Redis 등에서 제공하는 발행-구독 모델은 다르다. `redis pub/sub 모델`과 `event streamiong pub/sub 모델`의 궁극적인 차이는 공유 자원의 유무이다.
+
+
+**Redis pub/sub 모델**
 
 `redis pub/sub 모델`은 다음처럼 메시지를 생산하자마자 전달한다. 만약 구독자가 메시지를 받기는 했지만, 처리 도중 에러가 발생하거나 처리 능력을 초과한다면 메시지가 유실되기도 한다.
 
@@ -66,7 +68,9 @@ class Channel {
 }
 ```
 
-그러나 `event streamiong pub/sub 모델`은 다르다. 큐의 `FIFO`라는 특징은 무조건 데이터를 전달받을 수 있다는 특징을 보장한다.
+**Event streaming pub/sub 모델**
+
+그러나 `event streaming pub/sub 모델`은 다르다. 큐의 `FIFO`라는 특징은 무조건 데이터를 전달받을 수 있다는 특징을 보장한다.
 
 ```java
 class Channel {
@@ -109,7 +113,9 @@ class Channel {
 }
 ```
 
-main 메서드를 구현했을 때, consum 하기 전 데이터를 가져오는 방식이 달랐다.
+**동작 비교**
+
+main 메서드를 구현했을 때, consume 하기 전 데이터를 가져오는 방식이 달랐다.
 
 ```java
 public class PubSub {
@@ -134,6 +140,8 @@ public class PubSub {
 ```
 
 `BlockingQueue`를 사용하는 일에서 알 수 있듯이 공유 자원에서 여러 작업이 동시에 발생하면 문제가 발생한다. 운영 체제에서 멀티스레딩 방식 관련해 `생산자-소비자 문제`가 있다. 이 문제는 아래 `pull 모델`에서 설명해보겠다.
+
+**토픽, 브로커, 파티션**
 
 메시지 큐 시스템은 토픽, 파티션, 브로커 등으로 메시지를 분산 저장 및 전송한다. 말 그대로 하나의 토픽이 있고, 토픽에는 한 개 이상의 브로커가 소비자들에게 메시지를 중개한다.
 
