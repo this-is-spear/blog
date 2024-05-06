@@ -1,0 +1,31 @@
+---
+title: 네트워크 packet 정보 조회
+date: '2024-05-10'
+tags: ['회고', '네트워크']
+draft: true
+summary: 네트워크 심층 분석
+images: []
+---
+
+## 네트워크 패킷 간단 분석
+
+[https와 http 차이](https://www.cloudflare.com/ko-kr/learning/ssl/why-is-http-not-secure/)를 확인할 때 https는 http request 전체가 암호화하게 된다.
+그럼 컴퓨터는 어떤 정보를 가지고 데이터를 전달할 수 있을지 궁금해서 찾아보기 시작했다.
+
+wireshark를 이용하면 패킷에서 확인할 수 있는 각 레이어에서 사용하는 네트워크 정보를 확인할 수 있다.
+그중 TLS 덕분에 application data가 암호화된 모습을 확인할 수 있는데, application data 외 타 계층 정보는 쉽게 확인이 가능하다.
+
+![images](/static/images/reminiscence/2024/5m2w/1.png)
+
+TCP/IP 4계층 중 애플리케이션 계층 데이터만 암호화된다.
+즉, [라우터](https://www.cloudflare.com/ko-kr/learning/network-layer/what-is-a-network-switch/)가 IP를 확인할 때 application data를 확인하지 않는다.
+
+![images](/static/images/reminiscence/2024/5m2w/5.png)
+
+> [위키](https://en.wikipedia.org/wiki/Internet_protocol_suite) 참고
+
+전송 계층에서 확인할 수 있는 정보는 다양했다.
+TCP segments로 구분되어 데이터 링크 계층의 protocol data unit(PDU)인 프레임 단위로 전송하는 모습을 볼 수 있었다.
+하나의 application data는 3개의 프레임으로 나눠서 전송되는 모습을 확인할 수 있었다.
+
+![images](/static/images/reminiscence/2024/5m2w/3.png)
