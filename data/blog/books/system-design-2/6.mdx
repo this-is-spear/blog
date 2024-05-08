@@ -103,6 +103,23 @@ images: []
 각 장단점을 고려해 단위를 결정해야 하는데 정확도가 중요하면 이벤트 발생 시각을 기준으로 집계한다.
 이벤트 발생 시각을 사용할 경우 지연 처리 해결 방법으로 워터마크를 사용한다.
 
+윈도를 기준으로 집계하면 다음처럼 일정 시간 동안 데이터를 수집하게 된다.
+만약 ASIS처럼 데이터가 늦게 들어오면 정확한 데이터 처리가 어려워지기 때문에 여분을 추가로 둔 워터마크를 이용해 정확도를 높인다.
+
+| ASIS                                                    | TOBE                                                    |
+|---------------------------------------------------------|---------------------------------------------------------|
+| ![그림 2](/static/images/books/system-design-2/six/2.png) | ![그림 3](/static/images/books/system-design-2/six/3.png) |
+
+도메인 특성에 따라 워터마크(여분 윈도 사이즈) 길이가 결정된다. 워터마크가 길수록 지연 시간이 길어지니 주의해야 한다.
+
+윈도를 이용한 집계 방식은 다음과 같다.
+
+- [텀블링 윈도](https://docs.aws.amazon.com/ko_kr/kinesisanalytics/latest/dev/tumbling-window-concepts.html) : 그룹 단위 집계 방식
+- [호핑 윈도](https://learn.microsoft.com/en-us/stream-analytics-query/hopping-window-azure-stream-analytics) : 텀블링 윈도우와 달리 그룹을 겹쳐 집계하는 방식
+- [슬라이딩 윈도](https://docs.aws.amazon.com/ko_kr/kinesisanalytics/latest/dev/sliding-window-concepts.html) : 윈도 크기가 일정하게 유지되어 시간 경과에 따라 집계 영역이 달라지는 방식
+- [세션 윈도](https://learn.microsoft.com/en-us/stream-analytics-query/session-window-azure-stream-analytics) : 데이터가 들어온 시간의 유사성으로 그룹화한 방식
+- [스태거 윈도](https://docs.aws.amazon.com/ko_kr/kinesisanalytics/latest/dev/stagger-window-concepts.html) : 고정된 시간 단위로 결과를 집계하는 방식
+
 ### 집계 무결성 보장
 정리중
 
