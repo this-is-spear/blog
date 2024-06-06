@@ -24,50 +24,7 @@ images: []
 
 ### 대금 수신 흐름
 
-```mermaid
-sequenceDiagram
-	autonumber
-	actor user
-	box rgb(120, 134, 255) 결제 서비스
-	participant 결제 서비스
-	participant 결제 db
-	end
-	box rgb(120, 134, 255) 결제 실행 서비스
-	participant 결제 실행자
-	participant 주문 db
-	end
-	box rgb(120, 134, 255) 지갑 서비스
-	participant 지갑 서비스
-	participant 지갑 db
-	end
-	participant 외부 psp
-	box rgb(120, 134, 255) 지갑 서비스
-	participant 원장 서비스
-	participant 원장 db
-	end
-	
-	user ->> 결제 서비스 : 주문하기
-	결제 서비스 ->> 결제 db : 결제 이벤트 저장
-	결제 db ->> 결제 서비스: OK
-	
-	결제 실행자 ->> 주문 db : 결제 주문
-	주문 db ->> 결제 실행자: OK
-	
-	결제 실행자 ->> 외부 psp : 결제
-	외부 psp ->> 결제 실행자: OK
-	
-	결제 서비스 ->> 지갑 서비스 : 결제 후 잔고 기록
-	지갑 서비스 ->> 지갑 db : 잔고 기록 저장
-	지갑 db ->> 지갑 서비스 : OK
-	지갑 서비스 ->> 결제 서비스 : OK
-	
-	결제 서비스 ->> 원장 서비스 : 새 원장 기록
-	원장 서비스 ->> 원장 db : 원장 기록 저장
-	원장 db ->> 원장 서비스 : OK
-	원장 서비스 ->> 결제 서비스 : OK
-	****결제 서비스 ->> user : OK
-	
-```
+![그림 1](/static/images/books/system-design-2/twelve/1.png)
 
 - 결제 서비스
     - 사용자로부터 결제 이벤트를 수락하고 결제 프로세스를 조율한다. AML/CFT 규정을 준수하는지, 범죄 행위 증거가 있는지 평가하는 `risk check`를 먼저 진행하며 보통 제 3자 제공업체를 이요한다.
@@ -103,61 +60,7 @@ sequenceDiagram
 - 결제 처리자 응답에 따라 값을 `SUCCESS`, `FAIL`로 변경한다.
 - `SUCCESS`로 결정되면 지갑 서비스를 호출해 잔액을 업데이트하고 `지갑 전송 상태`를 `TRUE`로 변경한다.
 
-```mermaid
-sequenceDiagram
-	autonumber
-	actor user
-	
-	user ->> 결제 이벤트 구독자 : 주문받기
-	
-	rect rgb(120, 134, 255)
-  note right of 결제 이벤트 구독자: 트랜잭션
-	결제 이벤트 구독자 ->> 이벤트 db : 결제 이벤트 저장
-	이벤트 db ->> 결제 이벤트 구독자: OK
-  결제 이벤트 구독자 -->> 결제 서비스: 결제 주문
-	end
-	
-	rect rgb(120, 134, 255)
-  note right of 결제 서비스: 트랜잭션
-  결제 서비스 ->> 결제 db : 결제 주문 저장(NOT_STARTED)
-	결제 db ->> 결제 서비스: OK
-	end
-	
-	rect rgb(120, 134, 255)
-  note right of 결제 서비스: 트랜잭션
-	결제 서비스 ->> 결제 실행자: 주문 전송
-	결제 서비스 ->> 결제 db : 결제 주문 수정(EXECUTING)
-	end
-	rect rgb(120, 134, 255)
-  note right of 결제 서비스: 트랜잭션
-	결제 실행자 ->> 결제 서비스 : OK
-	결제 서비스 ->> 결제 db : 결제 주문 수정(SUCCESS, FAIL)
-	end
-	
-	rect rgb(120, 134, 255)
-  note right of 결제 서비스: 트랜잭션
-	결제 서비스 ->> 지갑 서비스 : 잔고 기록
-	지갑 서비스 ->> 결제 서비스 : OK
-	결제 서비스 ->> 결제 db : 결제 주문 수정(WALLET_UPDATE_DONE)
-	end
-	
-	rect rgb(120, 134, 255)
-  note right of 결제 서비스: 트랜잭션
-	결제 서비스 ->> 원장 서비스 : 새 원장 기록
-	원장 서비스 ->> 결제 서비스 : OK
-	결제 서비스 ->> 결제 db : 결제 주문 수정(LEDGER_UPDATE_DONE)
-	end
-	
-	
-	rect rgb(120, 134, 255)
-  note right of 결제 이벤트 구독자: 트랜잭션
-  결제 서비스 -->> 결제 이벤트 구독자: 주문 완료
-	결제 이벤트 구독자 ->> 이벤트 db : 결제 이벤트 수정(PAYMENT_DONE)
-	이벤트 db ->> 결제 이벤트 구독자: OK
-	end
-	
-	
-```
+![그림 2](/static/images/books/system-design-2/twelve/2.png)
 
 > 여기에서 볼 수 있는 모습은 트랜잭션 범위를 최소화하기 위해 상태 변화 과정을 세 단계로 분할했다. **`외부 인프라가 존재한다면 단계를 분할해 트랜잭션의 범위를 최소화 할 수 있겠다`**는 결론에 다다를 수 있었다.
 
@@ -179,52 +82,16 @@ https://developer.squareup.com/blog/books-an-immutable-double-entry-accounting-d
 
 결제 서비스가 결제 프로세스를 조율하며 ACID를 만족하게 된다. 그러나 PSP 처럼 외부 시스템과의 통신에서 통신 장애가 발생할 경우 주기적으로 비교하는 조정을 통해 문제를 해결한다.
 
-<aside>
-💡 트랜잭션 보장을 위해 결제 서비스에서 조율하고 마지막 확인을 위해 주기적으로 비교하는 조정을 진행한다.
 
-</aside>
+> 트랜잭션 보장을 위해 결제 서비스에서 조율하고 마지막 확인을 위해 주기적으로 비교하는 조정을 진행한다.
 
 결제 서비스는 결제 프로세스를 다음처럼 결과로 조율하게 된다.
 
-```mermaid
-sequenceDiagram
-	autonumber
-	box rgb(120, 134, 255) 클라이언트 브라우저
-	participant 구매 페이지
-	participant 결제 페이지
-	participant 결제 완료 페이지
-	end
-	
-	box rgb(120, 134, 255) 결제 시스템
-	participant 결제 서비스
-	participant 결제 DB
-	end
-	
-	구매 페이지 ->> 결제 서비스: 구매
-	결제 서비스 ->> PSP: nonce로 결제 생성
-	PSP ->> 결제 서비스: 결제 토큰 반환
-	결제 서비스 ->> 결제 DB: 토큰 저장
-	결제 서비스 ->> 결제 페이지: 토큰을 포함한 PSP 결제 페이지
-	결제 페이지 ->> PSP: 결제 시작
-	PSP ->> 결제 페이지: 결제 결과
-	결제 페이지 ->> 결제 완료 페이지: 결제 완료 페이지로 리다이렉트
-	PSP ->> 결제 서비스: 완료 결과 웹훅
-```
+![그림 3](/static/images/books/system-design-2/twelve/3.png)
 
 조정은 결제 시스템에서 PSP(결제 서비스 공급자)에서 제공하는 정산 파일로 진행된다.
 
-```mermaid
-sequenceDiagram
-	box rgb(120, 134, 255) 결제 시스템
-	participant 원장
-	participant 조정 서비스
-	end
-	participant PSP
-	
-	PSP ->> 조정 서비스: 정산 파일 제공
-	원장 ->> 조정 서비스: 결제 이력 조회
-	조정 서비스 ->> 조정 서비스: 조정 작업 진행
-```
+![그림 4](/static/images/books/system-design-2/twelve/4.png)
 
 조정 중 발견된 문제 해결 방법은 주어진 재료를 이용해 세 가지 방식으로 분류할 수 있으며 어떻게 대응할 수 있을지 정의할 수 있다.
 
