@@ -348,15 +348,15 @@ CMD java -javaagent:elastic-apm-agent.jar \
 
 사용할 수 있을법한 옵션과 함께 설명을 정리했다.
 
-| 환경 설정 정보                                         | 설명                                                                                                                                                       | 예시                     |
-|--------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
-| elastic.apm.service_name                         | 서비스를 식별할 수 있는 이름을 설정한다.                                                                                                                                  | member-api             |
-| elastic.apm.environment                          | 해당 서비스가 실행되는 환경을 의미한다. dev, aplus-test, aplus-qa, aplus-stage, aplus-prod                                                                                | dev                    |
-| elastic.apm.server_url                           | apm 이 세팅된 URL을 의미한다. dev, test, qa 환경은 http://10.9.25.4:8200 에 위치한다.                                                                                     | http://apm-server:8200 |
-| elastic.apm.secret_token                         | 연결에 필요한 secret token 값이며 apm integration에서 설정할 수 있다.                                                                                                     |                        |
-| elastic.apm.application_packages                 | 연결할 서비스의 application 패키지명이다. 컨텍스트 서치가 되는 루트 패키지로 설정한다.                                                                                                   | com.hello              |
-| elastic.apm.enable_experimental_instrumentations | experimental 기능을 사용할지 결정하는 옵셔이다. experimental 기능을 사용한다면 꼭 추가해야 한다.                                                                                       | true                   |
-| elastic.apm.log_sending                          | 로그를 직접 전송하는 방법이다. Filebeat를 사용하는게 좋지만 사용하지 않는다면 추가해도 좋다. - https://www.elastic.co/guide/en/apm/agent/java/current/config-logging.html#config-log-sending | true                   |
+| 환경 설정 정보                                         | 설명                                                                                                                                                              | 예시                     |
+|--------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| elastic.apm.service_name                         | 서비스를 식별할 수 있는 이름을 설정한다.                                                                                                                                         | member-api             |
+| elastic.apm.environment                          | 해당 서비스가 실행되는 환경을 의미한다. dev, aplus-test, aplus-qa, aplus-stage, aplus-prod                                                                                       | dev                    |
+| elastic.apm.server_url                           | apm 이 세팅된 URL을 의미한다. dev, test, qa 환경은 http://10.9.25.4:8200 에 위치한다.                                                                                            | http://apm-server:8200 |
+| elastic.apm.secret_token                         | 연결에 필요한 secret token 값이며 apm integration에서 설정할 수 있다.                                                                                                            |                        |
+| elastic.apm.application_packages                 | 연결할 서비스의 application 패키지명이다. 컨텍스트 서치가 되는 루트 패키지로 설정한다.                                                                                                          | com.hello              |
+| elastic.apm.enable_experimental_instrumentations | experimental 기능을 사용할지 결정하는 옵셔이다. experimental 기능을 사용한다면 꼭 추가해야 한다.                                                                                              | true                   |
+| elastic.apm.log_sending                          | 로그를 직접 전송하는 방법이다. Filebeat를 사용하는게 좋지만 사용하지 않는다면 추가해도 좋다. - [참고글](https://www.elastic.co/guide/en/apm/agent/java/current/config-logging.html#config-log-sending) | true                   |
 
 ### 클라이언트에서 에이전트 등록 트러블 슈팅 1 - Route Unkown
 
