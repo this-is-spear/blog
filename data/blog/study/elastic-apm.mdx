@@ -326,7 +326,7 @@ https://www.elastic.co/guide/en/fleet/current/elastic-agent-simplified-input-con
 
 클라이언트에서 에이전트를 등록하는 방법은 다양하지만 필자는 프로젝트에 비즈니스와 관련되지 않은 코드는 추가하고 싶지 않았다. 그래서 컨테이너를 만드는 시점에 추가할 수 있도록 구현했다.
 
-```
+```Dockerfile
 FROM amazoncorretto:17
 
 COPY --from=docker.elastic.co/observability/apm-agent-java:1.50.0 /usr/agent/elastic-apm-agent.jar /elastic-apm-agent.jar
