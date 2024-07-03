@@ -20,13 +20,13 @@ images: []
 
 ![https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-02_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_7.03.14.png)
 
-[참고 자료 : https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html](https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html)
+[참고 자료](https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html)
 
 어떤 방식을 사용할지는 다음 의사 결정 모델로 결정하면 된다. 필자는 RUM을 사용하면서 다른 통합 기능을 사용할거기에 중앙에서 관리되는 `agent` 툴을 사용할 생각이다.
 
 ![https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-02_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_7.03.01.png)
 
-[참고 자료 : https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html](https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html)
+[참고 자료](https://www.elastic.co/guide/en/apm/guide/8.11/getting-started-apm-server.html)
 
 하지만 이번 기회에 여러 방면으로 실행 가능한지 테스트해보기 위해 apm server 부터 테스트했다.
 
@@ -166,7 +166,7 @@ curl -X POST -u elastic:password "localhost:9200/_security/api_key?pretty" -H 'C
 
 ```
 
-api key 관련해서는 https://www.elastic.co/guide/en/observability/current/apm-beats-api-keys.html 글을 참고하자. 그럼 다음처럼 발급받을 수 있다.
+api key 관련해서는 [해당 글](https://www.elastic.co/guide/en/observability/current/apm-beats-api-keys.html)을 참고하자. 그럼 다음처럼 발급받을 수 있다.
 
 ```
 {
@@ -317,6 +317,154 @@ inputs:
 
 https://www.elastic.co/guide/en/fleet/current/elastic-agent-simplified-input-configuration.html
 
-아니면 filebeat를 사용하지 않더라도 **`log_sending`** 옵션을 이용해 apm으로 로그를 전송할 수 있다. https://www.elastic.co/guide/en/apm/agent/java/current/config-logging.html#config-log-sending 해당 글에서 확인할 수 있지만, 일부 로그가 유실될 수 있으니 주의하자.
+아니면 filebeat를 사용하지 않더라도 **`log_sending`** 옵션을 이용해 apm으로 로그를 전송할 수 있다. [해당 글](https://www.elastic.co/guide/en/apm/agent/java/current/config-logging.html#config-log-sending)에서 확인할 수 있지만, 일부 로그가 유실될 수 있으니 주의하자.
 
-만약 MDC를 지원하고 싶다면 **`log_ecs_reformatting` 옵션을 이용하면 된다.** https://www.elastic.co/guide/en/apm/agent/java/current/config-logging.html#config-log-ecs-reformatting 해당 글에서 확인할 수 있다.
+만약 MDC를 지원하고 싶다면 **`log_ecs_reformatting` 옵션을 이용하면 된다.** [해당 글](https://www.elastic.co/guide/en/apm/agent/java/current/config-logging.html#config-log-ecs-reformatting)에서 확인할 수 있다.
+
+
+### 클라이언트에서 에이전트 등록
+
+클라이언트에서 에이전트를 등록하는 방법은 다양하지만 필자는 프로젝트에 비즈니스와 관련되지 않은 코드는 추가하고 싶지 않았다. 그래서 컨테이너를 만드는 시점에 추가할 수 있도록 구현했다.
+
+```
+FROM amazoncorretto:17
+
+COPY --from=docker.elastic.co/observability/apm-agent-java:1.50.0 /usr/agent/elastic-apm-agent.jar /elastic-apm-agent.jar
+
+ARG JAR_FILE=build/libs/*.jar
+ENV APM_ENVIRONMENT="dev"
+ENV APM_SERVER_URL="http://apm-server:8200"
+ENV APM_TOKEN=""
+COPY ${JAR_FILE} app.jar
+
+CMD java -javaagent:elastic-apm-agent.jar \
+    -Delastic.apm.service_name=service-api \
+    -Delastic.apm.secret_token=$APM_TOKEN \
+    -Delastic.apm.server_url=$APM_SERVER_URL \
+    -Delastic.apm.environment=$APM_ENVIRONMENT \
+    -Delastic.apm.application_packages=com.hello \
+    -jar app.jar
+```
+
+사용할 수 있을법한 옵션과 함께 설명을 정리했다.
+
+| 환경 설정 정보                                         | 설명                                                                                                                                                       | 예시                     |
+|--------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|
+| elastic.apm.service_name                         | 서비스를 식별할 수 있는 이름을 설정한다.                                                                                                                                  | member-api             |
+| elastic.apm.environment                          | 해당 서비스가 실행되는 환경을 의미한다. dev, aplus-test, aplus-qa, aplus-stage, aplus-prod                                                                                | dev                    |
+| elastic.apm.server_url                           | apm 이 세팅된 URL을 의미한다. dev, test, qa 환경은 http://10.9.25.4:8200 에 위치한다.                                                                                     | http://apm-server:8200 |
+| elastic.apm.secret_token                         | 연결에 필요한 secret token 값이며 apm integration에서 설정할 수 있다.                                                                                                     |                        |
+| elastic.apm.application_packages                 | 연결할 서비스의 application 패키지명이다. 컨텍스트 서치가 되는 루트 패키지로 설정한다.                                                                                                   | com.hello              |
+| elastic.apm.enable_experimental_instrumentations | experimental 기능을 사용할지 결정하는 옵셔이다. experimental 기능을 사용한다면 꼭 추가해야 한다.                                                                                       | true                   |
+| elastic.apm.log_sending                          | 로그를 직접 전송하는 방법이다. Filebeat를 사용하는게 좋지만 사용하지 않는다면 추가해도 좋다. - https://www.elastic.co/guide/en/apm/agent/java/current/config-logging.html#config-log-sending | true                   |
+
+### 클라이언트에서 에이전트 등록 트러블 슈팅 1 - Route Unkown
+
+해당 형식처럼 어떤 요청을 받았는지 확인하기 어려운 상황이 있다.
+
+![스크린샷 2024-07-03 오후 10.15.18.png](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-03_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_10.15.18.png)
+
+APM은 요청을 처리한 서블릿 이름으로 분류하게 되는데 서블릿에 도달하지 않으면 해당 형식으로 지정된다. `Spring Cloud Gateway`는 성능을 위해 서블릿을 거치지 않고 라우팅하게 되어 서블릿 이름을 설정할 수 없게 된다. 관련 글은 [해당 글](https://www.elastic.co/guide/en/apm/agent/java/current/trouble-shooting.html#trouble-shooting-unknown-route)에서 확인 가능하다.
+
+이런 경우 `java agent`에서 [elastic.apm.use_path_as_transaction_name](https://www.elastic.co/guide/en/apm/agent/java/current/config-http.html#config-use-path-as-transaction-name) 플래그를 `true`로 설정하면 된다. 다만 URL 기반으로 생성되게 되는데 path parameter가 추가되면 대량 트랜잭션이 발생할 수 있으니 주의해야 한다. 이런 경우 [url groups](https://www.elastic.co/guide/en/apm/agent/java/current/config-http.html#config-url-groups)를 이용해 트랜잭션이 대량 발생하지 않도록 주의하자.
+
+### 운영환경 이슈 트러블 슈팅 1 - Data too large
+
+운영 환경 `kibana`에 접속하자마자 해당 이슈와 맞딱뜨렸다. 15분 간격으로 데이터를 조회하는 쿼리가 허용된 크기보다 10MB 초과해서 요청이 중단됐다.
+
+```
+Error while fetching resource
+
+Error
+[parent] Data too large, data for [<http_request>] would be [1034040064/986.1mb],
+which is larger than the limit of [1020054732/972.7mb], real usage: [1034040064/986.1mb],
+new bytes reserved: [0/0b],
+usages [model_inference=0/0b, inflight_requests=0/0b, request=0/0b, fielddata=52192/50.9kb, eql_sequence=0/0b]:
+circuit_breaking_exception Root causes: circuit_breaking_exception: [parent] Data too large, data for [<http_request>] would be [1034040064/986.1mb],
+which is larger than the limit of [1020054732/972.7mb],
+real usage: [1034040064/986.1mb], new bytes reserved: [0/0b], usages [model_inference=0/0b, inflight_requests=0/0b, request=0/0b, fielddata=52192/50.9kb, eql_sequence=0/0b] (429)
+
+URL
+https://host/internal/apm/fallback_to_transactions?kuery=&start=2024-07-03T10%3A14%3A34.049Z&end=2024-07-03T10%3A29%3A34.049Z
+```
+
+다음 이슈에서 `circuit_breaking_exception` 임을 확인할 수 있었다. [해당 글](https://discuss.elastic.co/t/finding-out-cause-of-circuit-breaking-exception-data-too-large/351217/3)에서는 `OOM`을 막기 위해 제한이 걸리기 때문에 제한 설정을 변경하지 않아야 하며 요청을 분할할 수 있도록 설정할 필요함을 알게 됐다.
+
+```
+Error
+
+[circuit_breaking_exception Root causes: circuit_breaking_exception:
+[parent] Data too large,
+data for [<http_request>] would be [1023057920/975.6mb],
+which is larger than the limit of [1020054732/972.7mb],
+real usage: [1023057920/975.6mb], new bytes reserved: [0/0b], usages [model_inference=0/0b, inflight_requests=0/0b, request=0/0b, fielddata=57630/56.2kb, eql_sequence=0/0b]]:
+
+[parent] Data too large,
+data for [<http_request>] would be [1023057920/975.6mb],
+which is larger than the limit of [1020054732/972.7mb],
+real usage: [1023057920/975.6mb], new bytes reserved: [0/0b], usages [model_inference=0/0b, inflight_requests=0/0b, request=0/0b, fielddata=57630/56.2kb, eql_sequence=0/0b] (429)
+
+```
+
+그럼 생각할 수 있는 내용은 JVM 제한에 맞게 서킷 브레이커가 걸리고 요청 분할로 해결 할 수 있음을 나타낸다. 첫 번째로 JVM 관련 설정을 제어하는 방법을 고려했다. [해당 글](https://github.com/elastic/elasticsearch/issues/31197)에서는 제한을 수정하는 방식을 제안했다.
+
+```
+curl -X PUT "localhost:9200/_cluster/settings" -H 'Content-Type: application/json' -d'
+ {
+     "transient" : {
+         "indices.breaker.total.limit" : "80%"
+     }
+ }
+ '
+```
+
+이런저런 글을 찾아보니 JVM 허용량을 기준으로 상한선이 정해지게 되는데, 운영 환경 ES 사이즈가 너무 작아 발생하는 문제처럼 보인다.
+
+🛠️운영 환경 분석 필요
+
+### 운영환경 이슈 트러블 슈팅 2 - 늘어나는 데이터셋
+
+JVM 리소스도 걱정되는데 저장 공간은 괜찮을까 우려됐다. 최근 신규 서비스를 런칭하면서 `APM`이 추가됐는데 6월 2일부터 7월 3일까지 적재된 양만 `81GB`다. 새로운 서비스가 추가되면 쌓이는 양이 3배 가까이 늘어나게 되니 대책을 미리 강구해야 한다. 고민 포인트는 세 가지다.
+
+- 스팬 압축
+- 샘플링 관리
+- 인덱스 라이프사이클 설정
+
+스팬 압축 먼저 살펴보자면 애플리케이션에서 데이터를 조합하는 경우 두 개 이상의 SQL이 실행되면서 다량의 스팬이 생성될 수 있다. 이런 경우 복잡하기만 하고 한 눈에 파악하기 어려울 수 있다. 이런 경우 `(1) 같은 유형` 이거나 `(2) 동일한 정보`를 가지거나 패턴을 분석해 압축을 진행한다.
+
+같은 유형인지는 스팬의 타입과 접근하는 리소스로 파악하며 동일한지는 스팬 값을 확인해서 판단한다. 자세한 내용은 [해당 글](https://www.elastic.co/guide/en/observability/8.12/span-compression.html)에서 확인 가능하다.
+
+- [`span_compression_same_kind_max_duration`](https://www.elastic.co/guide/en/apm/agent/java/1.x/config-huge-traces.html#config-span-compression-same-kind-max-duration)  : 주변 스팬 정보와 유사한 정보를 가지고 있는지 여부를 의미하며 동일한 span을 가진다면 같은 작업으로 인식한다. 기본 값은 `0ms`이다.
+- [`span_compression_exact_match_max_duration`](https://www.elastic.co/guide/en/apm/agent/java/1.x/config-huge-traces.html#config-span-compression-exact-match-max-duration) : 스팬 값이 정확히 일치하는지 여부를 의미하며 일정 기간 내에 동일한 span을 가진다면 같은 작업으로 인식한다. 기본 값은 `50ms`이다.
+
+<aside>
+    🚧 스팬 압축의 단점은 SQL이 수집되지 않는다는 점이다. 주의하자.
+
+</aside>
+
+샘플링을 관리하게 되면 데이터 양과 분석에 필요한 노력을 획기적으로 줄일 수 있다. 샘플링 덕분에 비정상적인 패턴을 쉽게 관리하고 복구 시간 또한 낮출 수 있다. APM은 `head-based sampling` 방식과 `tail-based sampling` 방식을 지원한다. 샘플링 값은 `transaction_sample_rate`  옵션으로 결정된다. 기본 값은 1이며 100%를 의미한다. 0.2라면 20%를 의미한다. 소수점은 네 자리만 지원하며 넘어갈 경우 반올림한다.
+
+기본적으로 `apm agent`는 `head-based sampling` 방식을 지원하며 추적이 시작되는 경우에 샘플 여부를 결정한다. 즉 해당 그림에서는 `Service A`에서 샘플링 여부가 결정된다.
+
+![참고 자료](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-03_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_9.41.26.png)
+
+[참고 자료](https://www.elastic.co/guide/en/observability/8.12/sampling.html#head-based-sampling)
+
+
+`head-based sampling`은 이후 오류를 예측할 수 없기 때문에 `Service C`에서 에러가 발생해도 샘플링이 불가할 수 있다. 이처럼 신뢰할 수 있는 샘플링 추출이 어렵기 때문에 `tail-based sampling` 방식을 고려해야 한다.
+
+`tail-based sampling` 방식은 추적이 끝난 뒤에 샘플 여부를 결정한다. 샘플링 여부를 결정하는 요소 중 하나가 느린지 여부인데, 느릴 수록 샘플되어야 하기 때문이다. 이처럼 의미 있는 샘플이 추출될 가능성이 높다.
+
+![스크린샷 2024-07-03 오후 9.51.15.png](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-03_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_9.51.15.png)
+
+`tail-based sampling` 방식의 단점은 APM 서버에서 샘플링이 이루어지기 때문에 요구되는 CPU와 메모리가 많다.  결과적으로 ES에 전송되는 데이터 양은 적으니 ES 관리 부담은 줄일 수 있다.
+
+`tail-based sampling` 방식은 APM 서버 설정이 필요하며 [해당 글](https://www.elastic.co/guide/en/observability/8.12/configure-tail-based-sampling.html)에서 관련 설정을 진행할 수 있다.
+
+> 🚧 `tail-based sampling` 방식에서 요구되는 APM 서버 메모리 양은 3GB이며 저장 한도가 부족하면 `configured storage limit reached.` 힌트를 제공한다.
+
+마지막으로 인덱스 라이프사이클 설정 방식을 살펴보면 기본적으로 수명 주기가 설정되어 있다. 롤오버가 진행되면 일부 메트릭을 지우게 된다. 이런 형식의 인덱스가 있으며 롤 오버가 진행될 때마다 관리된다.
+
+![스크린샷 2024-07-03 오후 10.12.29.png](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-03_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_10.12.29.png)
+
+결과적으로 수정할 부분은 없었다. 각 인덱스마다 데이터 사이즈 한도가 `50GB`이며, 월 단위로 관리된다. 롤 오버가 진행되면 30일이 지난 데이터를 제거하고 `50GB`가 넘지 않도록 정리하게 된다.
