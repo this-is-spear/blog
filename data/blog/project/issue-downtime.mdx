@@ -109,34 +109,53 @@ images: []
       # http client로 커넥션 맺어질 때 connection timeout 설정
       - spring.cloud.gateway.httpclient.connect-timeout=5000
 ```
+이후 게이트웨이에서 INTERNAL_SERVER_ERROR 에러 대해서 retry를 수행한다. 게이트웨이 API `RetryGatewayFilterFactory`에서 아래 정보를 모아 필터를 수행해준다.
 
-사용자 요청에 대한 connection timeout 이 아니라 internal service 통신에 설정할
+```kotlin
+	@Override
+	public List<String> shortcutFieldOrder() {
+		return Arrays.asList("retries", "statuses", "methods", "backoff.firstBackoff", "backoff.maxBackoff",
+				"backoff.factor", "backoff.basedOnPreviousValue");
+	}
+```
 
-추가 기능으로 배포 과정을 개선해야 했다.
+`yaml` 파일에서는 다음처럼 설정하면 된다.
 
-- 해결방안 1 → 코드 수정 영향도를 줄인다. → 게이트웨이 수정 필요
-  - 캐싱 시간을 줄인다. +
-  - connection timeout을 줄인다.
-  - retry를 수행한다.
-- 해결방안 2 → 배포 프로세스를 개선한다. → actuator 활용
-  - actuator를 이용해 서비스 상태를 변경할 수 있도록 수정한다.
-  - 배포 과정에서 api를 호출해 서비스를 제어한다.
+```yaml
+    filters:
+      - name: Retry
+        args:
+          retries: 3
+          statuses: INTERNAL_SERVER_ERROR
+          methods: *
+          backoff:
+            firstBackoff: 10ms
+            maxBackoff: 50ms
+            factor: 2
+            basedOnPreviousValue: false
+```
+
+아쉽게도 해당 방식은 `connection timeout`이 발생하면 해당 사용자는 5초 정도 대기해야 한다. 만약 1초 내외로 줄이고 싶다면 `connection timeout` 을 더욱 짧게 잡아야해서 `connection timeout` 에 대한 의도치 않은 제약이 걸리게 된다.
+
+그래서 `connection timeout` 설정을 변경하지 않는 방법을 활용했다.
+
+**해결방안 2 : actuator 활용해 배포 프로세스를 개선한다.**
+
+두 번째 해결 방법은 actuator를 활용해 유레카 서버 등록-해제를 제어하는 방법이다. 즉, 서비스 종료 전에 서비스 해제 API를 사용해 미리 유레카 서버에서 등록 해제한다.
 
 ![그림 6](/static/images/project/issue-downtime/6.png)
 
-서비스 레지스트리에서 직접 관리하는 방법 → 레지스트리 즉각 반영됨. 서비스 상태와 sync 안맞음
+spring actuator는 service registry 동작을 제어하는 인터페이스를 제공하고 spring cloud comons 은 해당 인터페이스의 구현체가 담겨있다. 내용은 다음과 같다.
 
-- 문제에 대한 접근
-  - 실제 서비스 상태가 다르다. → 레지스트리에 등록된 서비스 상태가 먼저 변경돼면 문제가 없다.
 
-<aside>
-    💡
-
-    **Service Registry Actuator Endpoint**
-
-    Spring Cloud Commons provides a `/serviceregistry` actuator endpoint. This endpoint relies on a `Registration` bean in the Spring Application Context. Calling `/serviceregistry` with GET returns the status of the `Registration`. Using POST to the same endpoint with a JSON body changes the status of the current `Registration` to the new value. The JSON body has to include the `status` field with the preferred value. Please see the documentation of the `ServiceRegistry` implementation you use for the allowed values when updating the status and the values returned for the status. For instance, Eureka’s supported statuses are `UP`, `DOWN`, `OUT_OF_SERVICE`, and `UNKNOWN`.
-
-</aside>
+> Service Registry Actuator Endpoint
+> Spring Cloud Commons provides a `/serviceregistry`actuator endpoint.
+> This endpoint relies on a`Registration`bean in the Spring Application Context.
+> Calling`/serviceregistry`with GET returns the status of the`Registration`.
+> Using POST to the same endpoint with a JSON body changes the status of the current`Registration`to the new value.
+> The JSON body has to include the`status`field with the preferred value.
+> Please see the documentation of the`ServiceRegistry`implementation you use for the allowed values when updating the status and the values returned for the status.
+For instance, Eureka’s supported statuses are`UP`,`DOWN`,`OUT_OF_SERVICE`, and`UNKNOWN`.
 
 다음처럼 GET 요청을 보내면 현재 상태 확인이 가능하다.
 
@@ -157,9 +176,13 @@ POST /actuator/serviceregistry
 { "status": "DOWN" }
 ```
 
-해당 방식은 유레카 서버에게 즉각적인 상태 반영은 가능하지만 서비스 상태와 달라 sync 맞추기가 어렵다. 만약 `spring actuator`가 제공하는 `health check`와 유레카 서버 상태 간 sync를 맞추려면 다음 방법이 좋다.
+해당 방식은 유레카 서버에게 즉각적인 상태 반영은 가능하지만 서비스 상태와 달라 sync 맞추기가 어렵다.
+만약 `spring actuator`가 제공하는 `health check`와 유레카 서버 상태 간 sync를 맞추려면 다음 방법이 좋다.
 
-- 해결방안 3 → 배포 프로세스를 개선한다. → health check 와 eureka staus 간 sync 맞추기
+**해결방안 3 : health check 와 eureka staus 간 sync 를 맞춘다.**
+
+유레카 서버는 `eureka.client.healthcheck.enabled: true` 로 설정되면 서비스 상태로 유레카 서버 등록 해제를 제어한다.
+서비스 상태가 `OUT-OF-SERVICE`나 `DOWN`이면 유레카는 서비스 상태를 캐치해 등록 해제를 진핸한다.
 
 `eureka.client.healthcheck.enabled=true` 설정과 함께 다음 **헬스체크 핸들러 구현**이 필요하다.
 
@@ -187,7 +210,7 @@ public interface HealthCheckHandler {
 @Component
 class CustomHealCheckHandler : HealthCheckHandler {
     var status = InstanceInfo.InstanceStatus.UP
-        protected set(status) {
+        private set(status) {
             synchronized(this) {
                 field = status
             }
@@ -207,7 +230,7 @@ class CustomHealCheckHandler : HealthCheckHandler {
 }
 ```
 
-`spring actuator`를 사용하는 경우 `/actuator/pause`, `/actuator/resume` 메서드를 이용할 수 있는데, PauseHandler 를 구현해 내부 기능을 채운다면 쉽게 제어가능하다.
+`spring actuator`를 사용하는 경우 `/actuator/pause`, `/actuator/resume` 메서드를 이용할 수 있는데, PauseHandler를 구현해 내부 기능을 채운다면 쉽게 제어가능하다.
 
 ```kotlin
 @Component
