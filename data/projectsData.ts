@@ -5,6 +5,12 @@ const projectsData = [
     imgSrc: '/static/images/project-teamup.png',
     href: 'https://tis-blog.vercel.app/blog/project/teamup-backup',
   },
+  {
+    title: '무중단 배포로의 개선 과정',
+    description: `유레카 이용시 배포 다운타임 존재하는 상황을 해결했습니다.`,
+    imgSrc: '/static/images/project/issue-downtime/1.png',
+    href: 'https://tis-blog.vercel.app/blog/project/issue-downtime',
+  },
 ]
 
 export default projectsData
