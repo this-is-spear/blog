@@ -11,6 +11,12 @@ const projectsData = [
     imgSrc: '/static/images/project/issue-downtime/1.png',
     href: 'https://tis-blog.vercel.app/blog/project/issue-downtime',
   },
+  {
+    title: '상상까지 더 한 알림 시스템 개선기',
+    description: `애플리케이션과 데이터베이스만 활용해 확장 가능한 알림 서비스 구축기를 경험했습니다.`,
+    imgSrc: '/static/images/project/design-notification-system/0.png',
+    href: 'https://tis-blog.vercel.app/blog/project/design-notification-system',
+  },
 ]
 
 export default projectsData
