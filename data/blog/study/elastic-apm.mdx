@@ -1,6 +1,6 @@
 ---
 title: elastic 8 apm 설정 과정
-date: '2024-07-02'
+date: '2024-07-07'
 tags: ['개념', 'apm', 'elasticsearch']
 draft: false
 summary: elastic version 8에서 agent 활용하는 방법 정리
@@ -464,5 +464,60 @@ JVM 리소스도 걱정되는데 저장 공간은 괜찮을까 우려됐다. 최
 
 인덱스 라이프사이클을 수정할 필요는 없었다. 각 인덱스마다 데이터 사이즈 한도가 50GB이며, 월 단위로 관리된다. 롤 오버가 진행되면 30일이 지난 데이터를 제거하고 50GB가 넘지 않도록 정리하게 된다.
 
-하지만 `tail-based sampling` 방식은 필수 조건이다. 오버롤이 되면 이전 기록 순으로 삭제될거고 분석 대상 데이터가 사라질 가능성이 높다.
-최대한 분석 대상군 비교 대상군 간의 비율을 맞춰 데이터 양을 줄여야 한다.
+
+### 운영환경 이슈 트러블 슈팅 3 - Spring cloud gateway 추적 불가 이슈
+
+게이트웨이를 거치면서 트랜잭션 전파가 정상적으로 동작하지 않았다. 문제 원인은 apm agent 트랜잭션이 web client, rest template, servlet 등 일반적인 API 통신만 지원하고 게이트웨이 전파 방식은 지원하지 않았기 때문이다. 그래서 헤더에 직접 삽입하는 방식으로 수동 전파를 이용해 해결했다. 수동으로 추가하기 위해 라이브러리를 추가한다.
+
+```kotlin
+    implementation 'co.elastic.apm:apm-agent-api:1.50.0'
+```
+
+. [void injectTraceHeaders(HeaderInjector headerInjector)](https://www.elastic.co/guide/en/apm/agent/java/current/public-api.html#api-span-inject-trace-headers) 메서드 사용하면 쉽게 해결 가능하다. 추가한 코드는 다음과 같다.
+
+```kotlin
+private const val TYPE_EXTERNAL = "external"
+private const val SUBTYPE_HTTP = "http"
+private val ACTION = null
+
+//...
+
+val request = exchange.request
+val spanName = request.methodValue + " " + request.uri.path
+
+// 현재 span 정보 조회
+val span = ElasticApm.currentSpan()
+    .startSpan(TYPE_EXTERNAL, SUBTYPE_HTTP, ACTION)
+    .setName(spanName)
+
+val transaction = ElasticApm.currentTransaction()
+
+try {
+    transaction.activate().use {
+        span.injectTraceHeaders { headerName: String, headerValue: String ->
+            request.mutate().header(headerName, headerValue).build()
+        }
+
+        chain.filter(exchange)
+    }
+} catch (e: Exception) {
+    span.captureException(e)
+    throw e
+} finally {
+    span.end()
+}
+
+//...
+```
+
+공식 문서는 `transaction.activate()` 사용하고 있었는데, 문맥상 `span.activate()` 하는게 맞지 않나 싶었다. `activate()` 는 간단하게 현재 사용하는 정보를 반환할 때 `activate` 한 정보를 반환한다. 예를 들어 `ElasticApm.currentTransaction()` 했을 경우 `activate()` 한 정보를 반환한다. 내부 구현체는 확인할 수 없었고 문서에서 지원하는 방식으로 진행했다. 글로벌 필터로 설정 후 결과는 다음과 같다.
+
+**AS-IS**
+
+![스크린샷 2024-07-04 오후 4.32.04.png](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-04_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_4.32.04.png)
+
+**TO-BE**
+
+![스크린샷 2024-07-04 오후 4.31.16.png](/static/images/study/elastic-apm/%25E1%2584%2589%25E1%2585%25B3%25E1%2584%258F%25E1%2585%25B3%25E1%2584%2585%25E1%2585%25B5%25E1%2586%25AB%25E1%2584%2589%25E1%2585%25A3%25E1%2586%25BA_2024-07-04_%25E1%2584%258B%25E1%2585%25A9%25E1%2584%2592%25E1%2585%25AE_4.31.16.png)
+
+사용하면서 `apm-agent-api`에서 발생할 수 있는 이슈는 `scop` 객체로 인한 `memory leak` 이슈로 보인다. `apm api` 에서 제공하는  `scope` 는 `closeable` 구현체라서 닫아줘야 하니 주의하자.
