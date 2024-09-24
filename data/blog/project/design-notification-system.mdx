@@ -244,7 +244,16 @@ corePoolSize가 넘었는데 maxPoolSize 만큼 차서 거절되면 다음 정�
 `WebClient`를 사용하기 위해 `Webflux` 의존성 추가는 러닝커브를 늘리는 일이니 조심스럽다.
 
 한 대의 서버로 리소스를 효율적이게 처리하는 과정은 모두 준비됐다.
-그러나 한 대의 서버로는 처리량과 가용성의 한계가 존재할 수 있다.
+그러나 한 대의 서버로는 처리량 한계가 존재할 수 있다.
+읽는 속도는 빠르지만 처리 속도는 현저히 느리기 때문이다.
+
+![그림 22](/static/images/project/design-notification-system/22.png)
+
+개선한 상황에서도 time-waiting 스레드가 증가하게 되어 서비스 장애로 이어질 수 있다.
+
+![그림 21-1](/static/images/project/design-notification-system/21-1.png)
+
+우리는 이런 상황을 타개해야 한다.
 
 ![그림 10](/static/images/project/design-notification-system/10.png)
 
