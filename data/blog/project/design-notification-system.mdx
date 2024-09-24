@@ -30,7 +30,7 @@ images: []
 
 ## 본론
 
-### 알림 특징을 이용한 상태 변화 디자인
+### 1. 알림 특징을 이용한 상태 변화 디자인
 
 목표
 
@@ -76,20 +76,16 @@ images: []
 - 참고하면 좋을 자료 : https://m.yes24.com/Goods/Detail/18249021
 
 알림 상태로 객체를 구분짓고 동적으로 변화하는 상태를 관리하기 위해 행동을 객체로 표현해 객체 간 협력 관계를 구축했다.
-구축하면서 얻은 경험은 다음과 같다.
+`협력 관계가 서비스가 되면서 객체 간 협력보단 절차적인 실행 흐름이 된게 아닐까`하는 아쉬움도 있었다.
 
-- 추상화
-  - 장점 : 확장 가능성은 열 건 열고 막을 건 막을 수 있어 견고한 코드 구성이 가능하다.
-  - 단점 : 공통 로직이 불변하지 않는나면 수정이 어렵다.
-  - 특징 : 불변의 진리만이 추상화의 온전한 이점을 가질 수 있다.
-- 객체 지향
-  - 특징 : 객체 지향의 핵심은 구현이 아닌 협력 관계를 구축하는 데에 유연하고 견고하게 설계할 수 있다는 점이다.
+아쉬움을 뒤로한 체 본격적으로 시스템 구성에 들어가보겠다.
 
-### 단일 서버로 구현
+### 2. 단일 서버로 구현
 
-단일 서버부터 출발해본다. `사용자가 적다면 가장 단순한 구현이 좋아보였고` 실행에 옮겼다. 알림 발송 건수가 적은 경우 설계는 다음과 같다.
+단일 서버부터 출발해본다. `사용자가 적다면 가장 단순한 구현이 좋아보였고` 실행에 옮겼다.
+알림 발송 건수가 적은 경우 설계는 다음과 같다.
 
-![그림 4](/static/images/project/design-notification-system/4.png)
+![그림 4](/static/images/project/design-notification-system/4-1.png)
 
 연결된 모든 클라이언트는 알림 발송이 완료될 때까지 대기하게 된다. 알림 발송이 늦어진다면 다음과 같은 이슈가 발생한다.
 
@@ -97,13 +93,27 @@ images: []
 - 알림 발송 기능 장애가 클라이언트 측으로 전파된다.
 - 클라이언트는 응답을 받기 위해 스레드를 대기(`TIMED_WAITING`) 상태로 유지하기 때문에 리소스 낭비가 존재한다.
 
+알림 발송 결과로 인해 클라이언트의 요청이 실패할 수 있는 상황이다.
+
+![그림 4](/static/images/project/design-notification-system/4.png)
+
 알림 발송 기능으로 인한 장애 전파와 리소스 낭비를 줄이기 위해 클라이언트의 요청과 알림 발송 기능을 분리해봤다.
 
-### 장애 전파 문제 해결 : 비동기로 사용자 요청과 알림 발송 요청 동작 분리
+### 3. 장애 전파 문제 해결 : 비동기로 사용자 요청과 알림 발송 요청 동작 분리
 
-사용자 요청과 알림 전송을 비동기로 처리해 알림 전송에 따라 응답 시간이 의존되는 현상 해결한다. 비동기로 처리하면 다음과 같이 동작한다.
+사용자 요청과 알림 전송을 비동기로 처리해 알림 전송에 따라 응답 시간이 의존되는 현상 해결한다.
+비동기로 처리하면 다음과 같이 동작한다.
 
 ![그림 2](/static/images/project/design-notification-system/2.png)
+
+비동기 방식으로 간단하게 스케줄러를 이용했다. 스케줄링 특성에 맞게 어떠 방식을 사용할지 결정하면 된다.
+
+![그림 2-1](/static/images/project/design-notification-system/2-1.png)
+
+- cron
+    - 특정 시간에 실행
+- fixedDelay
+    - 작업 사이 간격을 두고 실행
 
 이 때 알림 발송 요청 받으면 200 OK를 반환하게 된다. 즉, 알림 발송 요청은 무조건 전송되어야 한다는 뜻이다.
 이런 경우 알림 발송 요청 행동의 부산물인 `PendingNotification`, `CompletedNotification`, `FailedNotification` 상태를 영속화한다면 사용자 요청을 보장할 수 있다.
@@ -114,7 +124,7 @@ images: []
 데이터베이스 등과 같은 스토리지 시스템을 사용한다면 서버는 상태를 가지지 않게 되어 확장 또한 쉽다.
 
 작은 그림으로 살펴보자. 우린 의도한대로 알림 발송 요청과 사용자 요청을 분리해 처리할 수 있게 되었다.
-그러나 사용자 요청을 봤을 때 한 건 처리할 때마다 5초 걸리는 건 사실이다.
+그러나 한 건 처리할 때마다 5초 걸리는 건 사실이다.
 
 ![그림 14](/static/images/project/design-notification-system/14.png)
 
@@ -123,28 +133,60 @@ images: []
 
 알림 발송 응답을 대기하지 않고 지속적으로 요청한다면 처리량을 높일 수 있지 않을까?
 
-### 전송량 문제 해결 : 비동기로 요청 기다리지 않고 대량 발송하기
+### 4. 처리량 문제 해결 : 비동기로 요청 기다리지 않고 대량 발송하기
 
 알림 발송 요청을 대기하지 않고 새롭게 스레드를 생성해 알림 발송 요청한다면 처리량을 높일 수 있다.
 
 ![그림 15](/static/images/project/design-notification-system/15.png)
 
-**해당 방식의 문제도 존재한다. 읽기는 빨라지지만 처리가 빨라지지는 않는다.**
-알림 발송이 알림 발송 요청보다 처리양이 적은 경우 요청이 쌓일 수 있다.
-요청수가 많아지면 빠르게 쌓이게 되지만 작업자는 처리할 수 있는 양이 한정된다.
+해당 방식은 `@Async` 애너테이션으로 해결했다.
 
-![그림 5](/static/images/project/design-notification-system/5.png)
+![그림 15-1](/static/images/project/design-notification-system/15-1.png)
 
-요청을 보낼따마다 스레드를 생성한다면 리소스 낭비다. 이 문제를 해결하기 위해 `WebClient`를 사용해보자.
+`@Async` 애너테이션을 이용할 때 작업자를 정의할 수 있는데 얼만큼 어떻게 처리할지 결정하는 요소로 매우 중요하다.
 
-### 리소스 낭비 문제 해결 : WebClient로 사용자 요청 처리하기
+![그림 15-2](/static/images/project/design-notification-system/15-2.png)
 
-알림 발송 대기 상태로 메모리를 점유하는 현상을 해결하기 위해서는 요청 마다 스레드를 생성하지 않아야 한다.
-현재까지 `RestClient`로 작업을 처리하기 위해 알림 발송 요청 묶음만큼 스레드를 직접 생성하고 `RestClient`를 이용해 요청을 전송하도록 위임했다.
+ThreadPool 작업자 설정은 다음으로 결정된다.
 
-요청마다 스레드를 직접 생성하는건 낭비다. 그만큼 응답이 올때까지 대기하는 스레드가 늘어난다는 의미다.
+- corePoolSize
+    - 작업을 처리하는 작업자들 크기
+- maxPoolSize
+    - 작업을 처리하는 작업자들의 한계치
+- queueCapacity
+    - 처리할 작업이 대기 가능한 허용량
+
+동작은 딱 4 가지만 기억하면 된다.
+
+- corePoolSize 만큼 작업이 진행중이지 않다면 작업 진행
+- corePoolSize 만큼 작업이 진행중이면 queueCapacity 만큼 적재
+- queueCapacity 에 가득찼다면 corePoolSize가 넘더라도 실행
+- queueCapacity 에 가득찼다면 corePoolSize가 넘었는데 maxPoolSize 만큼 찼다면 해당 작업은 거절
+
+corePoolSize가 넘었는데 maxPoolSize 만큼 차서 거절되면 다음 정책으로 처리한다.
+
+- AbortPolicy
+    - TaskRejectedException 예외 발생! (기본값)
+- CallerRunsPolicy
+    - 실행중인 메서드에서 호출된 스레드가 직접 실행
+- DiscardPolicy
+    - 무시
+
+종료와 관련된 옵션 정의도 필요하다.
+
+- waitForTasksToCompleteOnShutdown
+    - 작업 모두 실행될 때까지 종료 대기 여부
+- awaitTerminationSeconds
+    - 작업이 전부 실행됨을 확인하고 대기하는 시간
+
+기본적으로 작업이 종료될 때까지 대기하지 않는다. awaitTerminationSeconds 변수를 이용해 일정 시간동안 스프링 컨테이너가 내려가지 않게 한다.
+
+이렇게 까지 설정한다면 작업자는 스레드를 생성해 요청하도록 위임한다. 이 때, 요청을 보낼따마다 스레드를 생성한다면 리소스 낭비가 발생한다.
+이 문제를 해결하기 위해 `WebClient`를 사용해보자.
 
 ![그림 8](/static/images/project/design-notification-system/8.png)
+
+### 리소스 낭비 문제 해결 : WebClient로 사용자 요청 처리하기
 
 `WebClient`를 이용한다면 요청마다 스레드를 생성하지 않고 요청을 처리할 수 있다.
 `WebClient` 내부에서 스레드 풀을 이용해 요청을 보내고 응답 신호가 오면 응답을 받아 전달하게 된다.
@@ -152,14 +194,32 @@ images: []
 ![그림 9](/static/images/project/design-notification-system/9.png)
 
 `WebClient`는 요청을 보낼따마다 스레드를 생성한다면 리소스 낭비를 극복할 수 있도록 도와준다.
-`WebClient` 단점은 `Webflux`와 같은 Reactive 라이브러리가 의존성에 추가되어야 한다는 점이다.
-`WebClient`를 사용하기 위해 `Webflux` 의존성 추가는 자유도를 높이는 일이고 의도하지 않은 사용도 존재할 테니 조심스럽다.
 
-한 대의 서버로는 처리량과 가용성의 한계가 존재한다. 이를 해결하기 위해 멀티 인스턴스로 구성해보자.
+이 떄 `Http Interface Client`를 이용한다면 `RestTemplate`, `RestClient` -> `WebClient` 교체가 정말 간단하다.
+
+**AS-IS**
+
+![그림 9-1](/static/images/project/design-notification-system/9-1.png)
+
+**TO-BE**
+
+![그림 9-2](/static/images/project/design-notification-system/9-2.png)
+
+물론 저렇게 변경한다고 이전처럼 동작하지 않는다. 슬프게도 우린 Reactive하게 코드를 작성해야 한다.
+
+![그림 9-3](/static/images/project/design-notification-system/9-3.png)
+
+`WebClient` 단점은 `Webflux`와 같은 Reactive 라이브러리가 의존성에 추가되어야 한다는 점이다.
+`WebClient`를 사용하기 위해 `Webflux` 의존성 추가는 러닝커브를 늘리는 일이니 조심스럽다.
+
+한 대의 서버로 리소스를 효율적이게 처리하는 과정은 모두 준비됐다.
+그러나 한 대의 서버로는 처리량과 가용성의 한계가 존재할 수 있다.
 
 ![그림 10](/static/images/project/design-notification-system/10.png)
 
-### 처리량 한계 문제 해결 : 멀티 인스턴스 구성
+이를 해결하기 위해 멀티 인스턴스로 구성해보자.
+
+### 6. 처리량 한계 문제 해결 : 멀티 인스턴스 구성
 
 공유 데이터를 외부에서 관리한다면 다음처럼 멀티 인스턴스로 구성할 수 있다.
 
@@ -188,27 +248,98 @@ images: []
 - 처리율을 원하는 만큼 높일 수 있다.
 - 멀티 인스턴스로 쉽게 변경 가능하다.
 
-반면 작업자가 많아지면서 스토리지 부하가 많아질테다. 스토리지 부하 이슈에 대한 대응이 필요하다.
+예시로는 간단하게 애플리케이션 내부에서 락을 이용해 동시성을 제어했지만 멀티 인스턴스에서는 분산락을 적용하면 된다.
 
-### 스토리지 부하 문제 해결 : 스토리지 스케일링 진행
+![그림 7-1](/static/images/project/design-notification-system/7-1.png)
 
+이건 주변에 자료가 많으니 패스하겠다.
+
+반면 작업자가 많아지면서 스토리지 부하가 많아질테다.
 스토리지 부하 분산을 위해 저장소 스케일링 진행이 필요하다.
 알림 발송 서버가 멀티 인스턴스로 구축되면서 저장소에 접근하는 빈도가 많아지게 된다.
 
 ![그림 12](/static/images/project/design-notification-system/12.png)
+
+스토리지 부하 이슈에 대한 대응이 필요하다.
+
+### 7. 스토리지 부하 문제 해결 : 스토리지 스케일링 진행
 
 스토리지를 스케일링 한다면 알림 서버가 증설되는 상황에 쉽게 대응 할 수 있다.
 필자는 간단하게 모듈러 연산으로 샤딩을 수행했다.
 
 ![그림 13](/static/images/project/design-notification-system/13.png)
 
+이 때 shardingsphere 라이브러리를 이용했는데 코드 수정 없이 쉽게 샤딩 할 수 있었다. orm도 함께 사용가능하니 도입해보자.
+
+```yaml
+spring:
+  application:
+    name: forwarder1
+  datasource:
+    driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
+    url: jdbc:shardingsphere:classpath:sharding.yml
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+```
+
+`classpath`에 `sharding.yml` 파일을 추가하면 된다.
+
+```yaml
+dataSources:
+  ds0:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.jdbc.Driver
+    # https://deeplify.dev/database/troubleshoot/public-key-retrieval-is-not-allowed 이슈 발생했었음.
+    jdbcUrl: jdbc:mysql://localhost:3306/forwarder0?useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: test
+  ds1:
+    dataSourceClassName: com.zaxxer.hikari.HikariDataSource
+    driverClassName: com.mysql.jdbc.Driver
+    # https://deeplify.dev/database/troubleshoot/public-key-retrieval-is-not-allowed 이슈 발생했었음.
+    jdbcUrl: jdbc:mysql://localhost:3306/forwarder1?useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: test
+rules:
+  - !SHARDING
+    tables:
+      pending_notification:
+        actualDataNodes: ds${0..1}.pending_notification
+      failed_notification:
+        actualDataNodes: ds${0..1}.failed_notification
+      completed_notification:
+        actualDataNodes: ds${0..1}.completed_notification
+    defaultDatabaseStrategy:
+      standard:
+        shardingColumn: channel_key
+        shardingAlgorithmName: database_inline
+    defaultTableStrategy:
+      none:
+    # https://shardingsphere.apache.org/document/5.5.0/en/dev-manual/sharding/
+    shardingAlgorithms:
+      database_inline:
+        type: INLINE
+        props:
+          algorithm-expression: ds${channel_key.hashCode() % 2}
+props:
+  sql-show: false
+```
+
+동작에 의문이 들 수 있는데, shardingsphere는 spring boot 덕분에 auto config된 datasource 정보를 본인이 가진 정보로 라우팅하는 역할을 한다고 이해하면 좋다.
+
+![그림 16](/static/images/project/design-notification-system/16.png)
+
 이 때 모듈러 연산에 사용할 키워드 선정이 매우 중요하다.
 만약 사용자 식별자로 모듈러 연산을 진행한다면 다음과 같은 이점과 단점이 있다.
 
 - 이점
-- 동일한 사용자는 동일한 스토리지에 저장되므로 알림 발송 요청 순서에 맞게 전송할 수 있다.
+    - 동일한 사용자는 동일한 스토리지에 저장되므로 알림 발송 요청 순서에 맞게 전송할 수 있다.
 - 단점
-- 동일한 사용자는 동일한 스토리지에 저장되므로 특정 데이터베이스에만 저장과 조회가 집중되는 핫키 현상이 발생한다.
+    - 동일한 사용자는 동일한 스토리지에 저장되므로 특정 데이터베이스에만 저장과 조회가 집중되는 핫키 현상이 발생한다.
 
 모듈러 연산으로 저장할 때 특정 키워드로 동일한 스토리지를 유지해야 하는 경우에는 해당 키워를 활용하는게 좋다.
 반면 핫 키 문제를 해결해야 할 과제다.
