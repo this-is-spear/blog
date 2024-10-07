@@ -249,14 +249,13 @@ connectionFactory.newConnection().use {
 
 ![images](/static/images/study/rabbitmq/image.png)
 
-
 중요한건 두 개 이상의 작업자(worker)가 존재한다면 작업자(worker)가 작업(task)을 꺼내(pop) 실행하며 분산해서 처리하게 된다.
 
-![images](/static/images/study/rabbitmq/image%201.png)
+![images](/static/images/study/rabbitmq/image1.png)
 
 작업자(worker)를 4개로 설정하고 실행하는 경우 다음처럼 분산 처리하는 모습을 볼 수 있다. 기본적으로 라운드로빈에 맞춰 작업을 분산하게 된다.
 
-![images](/static/images/study/rabbitmq/image%202.png)
+![images](/static/images/study/rabbitmq/image2.png)
 
 **소비자가 작업중 종료되면 어떻게 될까?**
 
@@ -428,7 +427,7 @@ private fun taskWithMessage(message: String) {
 
 다음처럼 라운드 로빈으로 실행되는게 아니라 종료가 될 때마다 작업을 가져와 처리하는 모습을 볼 수 있다.
 
-![images](/static/images/study/rabbitmq/image%203.png)
+![images](/static/images/study/rabbitmq/image3.png)
 
 ### RabbitMQ tutorial - Publish/Subscribe
 
