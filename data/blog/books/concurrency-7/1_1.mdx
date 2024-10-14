@@ -340,6 +340,78 @@ JVM은 클래스 파일을 실행 엔진에서 기계어로 변환하게 된다.
 4. 글로벌 최적화 : 전체 코드를 검사하고 일부 중복을 제거하고 동기화를 최적화한다.
 5. 원시 코드 생성 : 기계어를 생성한다.
 
+### 일반적인 컴파일러 구조
+컴파일러 일반적인 구조를 확인해서 JIT 컴파일러 동작을 예측할 수 있어보인다.
+컴파일러 개론에 작성된 내용은 다음과같다.
+
+`Frontend` 영역에서 작성된 코드를 분석하고 IR 이라는 AST 트리로 변환해 `Optimizer`로 전달한다. `Optimizer`는 코드를 최적화해 `Backend`로 전달한다. `Backend`는 운영체제가 이해할 수 있는 코드로 변환한다.
+
+![](/static/images/books/concurrency-7/Pasted image 20241013225625.png)
+
+이 때 각각의 최적화 방법이 존재하지만 명령어 순서가 변경되는 영역은 Backend 영역의 `Code Generator` 때문이다. `Code Generator`는 다음과 같은 동작을 한다.
+
+- Register allocation : 레지스터 할당을 최소화하기 위해 명령어를 재배치한다.
+- Instruction scheduling : 명령어 파이프라이닝에 최적화하기 위해 명령어를 재배치한다.
+- Peephole optimization : 틈새(peephole)를 줄이기 위해 명령어를 최적화한다.
+
+![](/static/images/books/concurrency-7/Pasted image 20241013225604.png)
+
+틈새(peephole)를 줄이는 건 다음 과정으로 이루어진다.
+
+- [Redundant load and store elimination](https://www.geeksforgeeks.org/peephole-optimization-in-compiler-design/) : 중복 읽기와 쓰기를 줄인다.
+- [Constant folding](https://en.wikipedia.org/wiki/Constant_folding) : 상수를 미리 계산한다.
+- [Strength Reduction](https://en.wikipedia.org/wiki/Strength_reduction) : 연산 강도 감소
+
+Redundant load and store elimination
+
+**AS-IS**
+
+```java
+y = x + 5;
+i = y;
+z = i;
+w = z * 3;
+```
+
+**TO-BE**
+
+```java
+y = x + 5;
+w = y * 3;
+```
+
+
+Constant folding
+
+**AS-IS**
+
+```java
+y = 3 + 5;
+```
+
+**TO-BE**
+
+```java
+y = 8;
+```
+
+
+Strength Reduction
+
+**AS-IS**
+
+```java
+y = x * 2;
+```
+
+**TO-BE**
+
+```java
+y = x << 1;   // or  y = x + x;
+```
+
+### 순서 변경에 대해서 정리하자면
+
 정리하자면 자바 메모리 모델은 독립된 스레드 실행에 영향을 미치지 않는다면 명령어는 재정렬을 허용한다.
 일반적인 컴파일러는 독립된 스레드 실행에 영향을 미치지 않는다면 명령어는 재정렬된다. 그래서 각 스레드는 명령어가 재정렬된다.
 JVM은 인터프리터로 실행될때마다 명령어 순서를 결정하지만 JIT 설정한 실행 횟수 임계치를 넘으면 컴파일 결과를 캐싱해 재활용한다.
