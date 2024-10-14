@@ -1,0 +1,141 @@
+---
+title: 7가지 동시성 모델 | 동시성
+date: '2024-10-14'
+tags: ['동시성', '잠금장치']
+draft: false
+summary: 지금까지 이런 글은 없었다. 이것은 동시성인가 자바 메모리 모델인가 잠금장치 이야기인가...
+images: []
+---
+
+## Introduction
+
+동시성 모델을 학습하기 전 동시성 개념을 잡아보려고 한다.
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 비결정적 특성에 기준한 동시성과 병렬성 이야기
+
+### 동시성과 병렬성 개념
+`동시성`과 `병렬성`은 반댓말이다. `동시성`은 여러 일을 한꺼번에 다루는 데 관한 것이고 `병렬성`은 여러 일을 한꺼번에 실행하는 데 관한 것이다.
+나는 음악을 들으며 게임을 한다. 가끔 물도 마신다. 나는 여러 일을 한꺼번에 다루기에 `병렬성`이 아닌 `동시성`이다. 만약 날 돕는 조교가 대신 게임을 해준다면 `동시성`과 `병렬성`이 모두 가진다.
+만약 부하들이 재활용 쓰레기를 버린다고 생각하면 부하마다 재활용품 하나씩 맡게 할 수 있다. 재활용 쓰레기를 버리는 일 하나만 일어나므로 여러 일을 한꺼번에 다루지 않는다. 즉, `병렬성`을 가지지만 `동시성`은 가지지 않는다.
+
+### 비결정적 특성
+`동시성`과 `병렬성`이 혼동되는 이유는 전통적인 스레드와 장금장치는 `병렬성`을 직접 지원하지 않기 때문이다. 병렬 프로그램에서 `동시성`을 만족하기 어려운 이유는 `동시성`은 비결정성(`nondeterministic`) 특징을 가지고 `병렬성`은 비결정성(`nondeterministic`)을 가지지 않기 때문이다.
+비결정적(`nondeterministic`) 특징 : 사건이 일어나는 시간에 따라 결과가 달라지는 특성이다. 동시성은 타이밍에 따라 결과가 달라질 수 있지만 병렬성은 의도한 결과가 나와야 한다.
+
+## 병렬 아키텍처
+
+현대 컴퓨터는 코어뿐만 아니라 다음과 같은 수준의 `병렬성`을 지원한다. 병렬성을 실현하는 기술은 다음과 같다.
+
+### 비트 수준 `병렬성`
+
+32비트 컴퓨터가 8비트 컴퓨터보다 빠른 이유는 큰 파일을 처리하기 위해 옮길 수 있는 대역폭이 4배 증가했기 때문이다. 즉, 1바이트씩 병렬로 전달하는 방법에서 4바이트씩 병렬로 전달하는 방법으로 변경됐기 때문이다.
+
+4비트 컴퓨터로 설명하자면 버스에서 한 번에 보낼 수 있는 크기가 4비트이고 32비트 데이터를 가져온다면 총 8번 이동해야 한다. 그래서 32비트 컴퓨터보다 데이터를 전달하는 과정이 많아 시간이 오래 소요된다.
+
+### 명령어 수준 `병렬성`
+
+파이프라이닝(`pipelining`), 비순차 실행(`out-of-order execution`), 추측 실행(`speculative execution`) 기법을 사용해 병렬적으로 처리하고 있다.
+
+- 파이프라이닝(`pipelining`)
+- 비순차 실행(`out-of-order execution`) - [https://ko.wikipedia.org/wiki/비순차적_명령어_처리](https://ko.wikipedia.org/wiki/%EB%B9%84%EC%88%9C%EC%B0%A8%EC%A0%81_%EB%AA%85%EB%A0%B9%EC%96%B4_%EC%B2%98%EB%A6%AC)
+- 추측 실행(`speculative execution`) [https://en.wikipedia.org/wiki/Speculative_execution](https://en.wikipedia.org/wiki/Speculative_execution)
+
+## 파이프라이닝(`pipelining`)
+
+다음부터 파이프라이닝에 대해 자세하게 설명해보겠다. CPU는 다음단계처럼 명령어를 가져와 등록하고 실행하면서 필요한 데이터를 메모리에 접근해서 레지스터에 저장한다. 이걸 `인출 → 해석 → 실행 → 저장` 순으로 진행한다.
+
+![](/static/images/books/concurrency-7/Pasted%20image%2020241010151423.png)
+
+각 영역마다 한 번씩 실행할 수 있으며 명령어는 다음에 걸처 동시다발적으로 수행한다. 이걸 파이프라이닝이라 한다.
+
+![](/static/images/books/concurrency-7/Pasted%20image%2020241010151435.png)
+
+## 비순차 실행(`out-of-order execution`)
+
+이 때 명령어간 의존되는 상황이 존재한다. 첫 번째 명령어가 실행이 돼야지만 다음 명령어를 실행하는 경우다. 어떤 것에 의존하냐에 따라 데이터 의존성, 제어 의존성, 메모리 의존성 인지가 결정된다. (동일한 데이터에 접근하면 작업의 원자성이 맞지 않게 되고 데이터 정합성이 맞지 않게 된다.)
+
+![](/static/images/books/concurrency-7/Pasted%20image%2020241010151445.png)
+
+> 명령어 수준 병렬성은 코드 상에 적혀진 순서가 아닌 데이터 혹은 제어 흐름으로 결정된다.
+
+그 동안 대기하는 상황을 줄이기 위해 뒤에서 대기하고 있던 요청을 먼저 처리하고 첫 번째 요청이 끝날 때 쯤 요청을 재개하는 방식으로 최적화한다.
+
+![](/static/images/books/concurrency-7/Pasted%20image%2020241010151455.png)
+
+## 추측 실행(`speculative execution`)
+
+컴퓨터는 필요한지 여부를 묻기 전에 작업을 수행해 정말 필요한 순간 작업 완료까지 지연되는 상황을 방지하는 방식이다. 작업이 필요하지 않게 된다면 변경한 부분을 되돌려 결과를 무시하기도 한다.
+
+> 추측 실행 목표는 추가 리소스가 많은 경우 더 많은 동시성을 제공하기 위해서다. 추측 실행을 활용하는 방식은 명령어 파이프라이닝의 분기 예측([Branch_predictor](https://en.wikipedia.org/wiki/Branch_predictor)), 캐시 프리패칭([Cache_prefetching](https://en.wikipedia.org/wiki/Cache_prefetching)), RDB의 낙관적 동시성 제어([Optimistic_concurrency_control](https://en.wikipedia.org/wiki/Optimistic_concurrency_control)) 경우가 있다.
+>
+> 유사한 경우의 멀티스레드환경의 추측([Speculative_multithreading](https://en.wikipedia.org/wiki/Speculative_multithreading))도 있다.
+
+명령어 파이프라이닝의 분기 예측([Branch_predictor](https://en.wikipedia.org/wiki/Branch_predictor))을 예로들어보겠다. 최신 명령어 파이프라인에서 분기 실행을 사용하는 방식은 조건 분기 명령어의 비용을 줄이기 위해 사용한다. 그림으로 보면 명령어는 다음에 실행할 명령어를 미리 대기하고 있는데, 조건문인 경우 조건문 결과가 결정돼야 다음 명령어를 넣어야 한다.
+
+일반적으로는 조건 분기 중 한 케이스를 미리 담아두고 있다. 그림에서는 `flag`가 `true`인 케이스를 담아둔다.
+
+![](/static/images/books/concurrency-7/Pasted%20image%2020241010151506.png)
+
+그런데 `flag`가 `false`로 결정되면 그때서야 채워뒀던 `hello` 반환하는 명령어 더미를 지우고 `hi`를 반환하는 명령어 더미를 추가하게 된다.
+
+![](/static/images/books/concurrency-7/Pasted%20image%2020241010151515.png)
+
+그럼 명령어 파이프라인 최적화가 불가능하기 때문에 명령어는 미리 일어날 일을 대비하기 위해 추측 실행한다. 작업이 필요하지 않게 되면 결과를 무시하면 그만이다.
+
+![](/static/images/books/concurrency-7/Pasted%20image%2020241010151520.png)
+
+### 데이터 `병렬성`
+
+데이터 병렬(**SIMD :**[Single_instruction,_multiple_data](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data)) 아키텍처는 대량 데이터에 대해 같은 작업을 병렬적으로 수행한다. 예시로 이미지 밝기를 조절하기 위해 각 필셀 밝기를 조절하려고 `GPU`를 사용하는 상황이다.
+
+**SIMD** 원리는 간단하다. 하나의 명령어로 여러 데이터에 동시에 적용하는 방법이다. 기존에는 각 픽셀마다 하나씩 RGB 값을 조정했다면 **SIMD**를 이용하면 여러 픽셀 RGB 한 번에 조정한다. **이 때 병렬성은 활용하지만 동시성은 활용하지 않는다.**
+
+### 태스크 수준 `병렬성`
+
+여러 대 프로세서를 이용해 태스크를 처리하는 방법으로 메모리가 공유되는지 여부에 따라 동작과 성능이 다르다.
+
+![그림 1](/static/images/books/concurrency-7/Pasted%20image%2020241010151536.png)
+
+메모리로 공유하는 경우 네트워크를 이용하는 것보다 빠르고 간단하기 때문에 구현이 더 쉽지만 프로세서의 일정 수가 넘어가면 공유 메모리 접근에서 병목 현상이 발생한다.
+
+> 이런 공유 메모리 접근에서 발생하는 `turtle neck` 현상을 방지하고 하드웨어 결함 방지를 위한 `fault tolerant` 시스템을 구축하기 위해서는 분산 메모리는 필수 불가결이다.
+
+## 동시성 : 멀티코어를 넘어서
+
+정확하게 구현된 동시성은 소프트웨어 반응성을 높이고 장애를 허용하며 효율적이고 간단하게 만들게 한다.
+
+- 동시적인 세계에 맞는 동시적 소프트웨어
+  - 동시적인 실세계와 상호작용하기 위해서는 소프트웨어도 동시적일 필요가 있다. 휴대폰으로 노래도 듣고 만화도 보지 않는가. 동시성은 반응형(responsive) 시스템의 핵심이고 여러 개의 네트워크 연결을 동시에 다룰 수 있어야 한다.
+- 분산된 세계에 맞는 분산 소프트웨어
+  - 문제 해결에 **`지리적인 분산(?)`**이 핵심인 경우도 있다. 소프트웨어가 여러 대로 분산되어 요청을 처리한느 건 동시적이다. 분산 소프트웨어는 장애에 강하다.(탄력성이 높다.)
+- 예측 불가능한 세계에 맞는 탄력적 소프트웨어
+  - 동시성은 독립성과 장애 감지를 통해 장애 허용성(Fault tolerant)을 가진다.
+- 복잡한 세계에 맞는 단순한 소프트웨어
+  - 복잡한 상황에서 요러 문제를 다루는 복잡한 스레드 하나를 만드는 일보다 각각 하나씩 문제를 다루는 스레드 여러 개 만드는게 나을 수 있다.
+
+> 결론은 동시성을 이용하면 여러 이점이 있다고 이야기하고 싶어하는 듯 하다.
+
+## 그 외 추가 학습 내용 정리
+
+### 캐시 프리패칭([Cache_prefetching](https://en.wikipedia.org/wiki/Cache_prefetching))
+캐시 프리패칭은 필요하기 전 더 빠른 메모리 영역으로 명령어나 데이터를 저장해 실행 성능을 높이는 기술이다.
+
+[mysql에서는 버퍼풀 프리패칭](https://dev.mysql.com/doc/refman/8.4/en/innodb-performance-read_ahead.html) 동작이 있다.
+
+- random io : 1KB 접근해서 읽는데 40ms
+- sequential io : 1000KB 읽는데 100ms -> Linear-ahead -> prefetching
+
+### 낙관적 동시성 제어([Optimistic_concurrency_control](https://en.wikipedia.org/wiki/Optimistic_concurrency_control))
+개념 : 여러 작업이 서로 간섭하지 않고 진행되고 작업이 완료되기 전 사용한 데이터가 중간에 사용됐는지 확인해 작업의 원자성을 보장하는 방법이다. 데이터베이스에서는 낙관적 락으로 통용한다.
+
+> HTTP는 내장 OCC 형식을 제공하는데, 초기 GET 요청에 대한 응답 헤더 속 `If-Match` 헤더 포함하는게 OCC 형식을 사용하는 방법이다. 후속 PUT 요청이 `ETag`가 있고, `If_Match` 헤더에 포함된 헤더보다 오래된 `ETag` 를 가진 PUT 요청은 거부될 수 있다.
+
+### 멀티스레드환경의 추측([Speculative_multithreading](https://en.wikipedia.org/wiki/Speculative_multithreading))
+**TLS**(**Thread Level Speculation**)는 Speculative Multi-threading 또는 Speculative Parallelization라고 하며 컴퓨터에서 단일 스레드 또는 병렬 스레드에 맞게 실행 될 코드 영역을 미리 실행하는 기술이다. 이런 추측 스레드는 입력 변수 값으로 인한 가정 하에 실행된다.
+
+## 장애 허용성 - Fault tolerant ([장애_허용_시스템](https://ko.wikipedia.org/wiki/%EC%9E%A5%EC%95%A0_%ED%97%88%EC%9A%A9_%EC%8B%9C%EC%8A%A4%ED%85%9C))
+일부 결함이 발생해도 부분적으로 기능을 수행할 수 있는 시스템을 의미한다. 결함 감내 시스템은 부품 결함이 점진적으로 발생하는 특징(`graceful degradation`)을 가지며 보통 시스템 고장으로 정지하면 안되는 상황에서 사용한다. 우주, 자동차, 금융 등에서 활용된다.
+
+
