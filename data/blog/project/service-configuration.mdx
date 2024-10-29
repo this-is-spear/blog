@@ -19,18 +19,15 @@ summary: 서비스 환경 변수 설정 공통화 작업
 ## 문제
 문제는 두 가지로 정의할 수 있습니다.
 
-<div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        <h3>문제 1 : 서비스 마다 존재하는 환경 별 구성 파일</h3>
-        ![그림 2](/static/images/project/service-configuration/2.png)
-        <p>새로운 환경 변수가 추가되면 모든 환경에 맞게 구성하는 번거로움이 발생했습니다.</p>
-    </div>
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        <h3>문제 2 : 환경 변수 별 약간의 오차</h3>
-        ![그림 3](/static/images/project/service-configuration/3.png)
-        <p>같은 `value`지만 `key`가 다르거나 같은 `key`지만 `value`가 다른 케이스가 있어 매핑 과정이 껄끄럽지 못합니다.</p>
-    </div>
-</div>
+### 문제 1 : 서비스 마다 존재하는 환경 별 구성 파일
+새로운 환경 변수가 추가되면 모든 환경에 맞게 구성하는 번거로움이 발생했습니다.
+
+![그림 2](/static/images/project/service-configuration/2.png)
+
+### 문제 2 : 환경 변수 별 약간의 오차
+같은 `value`지만 `key`가 다르거나 같은 `key`지만 `value`가 다른 케이스가 있어 매핑 과정이 껄끄럽지 못합니다.
+
+![그림 3](/static/images/project/service-configuration/3.png)
 
 ## 원인
 
@@ -42,53 +39,38 @@ summary: 서비스 환경 변수 설정 공통화 작업
 두 가지 원인으로 배포마다 휴먼 에러가 발생해 피로감 누적되고 있습니다.
 이번 기회에 데브옵스 팀과 함께 환경 변수 정복해보려 합니다.
 
-### 해결
+## 해결
+
+### 원인 해결
 
 문제 해결에 집중해 고민했던 내용을 정리했습니다.
 원인을 해결은 동일한 환경 변수를 바라보게 세팅하는 방법으로 충족 가능합니다.
+각 서비스는 동일한 템플릿을 구성하고 환경 별 변수를 매핑하는 방식으로 고민을 시작했습니다.
+![그림 1](/static/images/project/service-configuration/4.png)
 
-<div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        ![그림 1](/static/images/project/service-configuration/4.png)
-        각 서비스는 동일한 템플릿을 구성하고 환경 별 변수를 매핑하는 방식으로 고민을 시작했습니다.
-    </div>
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        ![그림 1](/static/images/project/service-configuration/5.png)
-        인프라마다 설정 파일을 관리해 주입하는 방식으로 구성해 인프라 설정마다 발생하는 오차를 줄이도록 고안했습니다.
-    </div>
-</div>
+두 번째는 인프라마다 설정 파일을 관리해 주입하는 방식으로 구성해 인프라 설정마다 발생하는 오차를 줄이도록 고안했습니다.
+![그림 1](/static/images/project/service-configuration/5.png)
 
+### 원인을 넘어선 횡단 관심사와 종단 관심사
 팀 그라운드 룰로 적용하기에는 수정과 확장에 대응하지 못해 부족함을 느꼈습니다.
 확장에 자유로운 구조를 고민하기 위해 개념을 추상화했습니다.
 
-<div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        <h3>횡단 관심사</h3>
-        ![그림 1](/static/images/project/service-configuration/6.png)
-        횡단적인 관심사를 분리해 시각화하면서 관리 대상에 맞는 책임을 명확히 할 수 있습니다.
-    </div>
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        <h3>종단 관심사</h3>
-        ![그림 1](/static/images/project/service-configuration/7.png)
-        종단적인 관심사를 구분했을 때는 고민이 컸습니다. 환경 변수 관리 영역 특수성이 있기 때문입니다.
-    </div>
-</div>
+횡단적인 관심사를 분리해 시각화하면서 관리 대상에 맞는 책임을 명확히 할 수 있습니다.
+![그림 1](/static/images/project/service-configuration/6.png)
+
+종단적인 관심사를 구분했을 때는 고민이 컸습니다. 환경 변수 관리 영역 특수성이 있기 때문입니다.
+![그림 1](/static/images/project/service-configuration/7.png)
 
 환경 변수 관리 영역 특수성에 맞게 책임을 분리할 필요가 있습니다.
 시스템은 운영 환경과 운영 환경 외 환경으로 격리되서 관리됩니다.
 그럼 인프라를 기준으로 설정하게 되도 운영 환경은 따로 격리되서 관리됩니다.
 그렇기에 오히려 휴먼 에러 발생 가능성을 높일 수 있습니다.
 
-<div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        <h3>인프라 기준 분리</h3>
-        ![그림 1](/static/images/project/service-configuration/8.png)
-    </div>
-    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        <h3>환경 기준 분리</h3>
-        ![그림 1](/static/images/project/service-configuration/9.png)
-    </div>
-</div>
+인프라 기준 분리한 경우는 다음과 같습니다.
+![그림 1](/static/images/project/service-configuration/8.png)
+
+환경 기준 분리한 경우는 다음과 같습니다.
+![그림 1](/static/images/project/service-configuration/9.png)
 
 격리된 채로 인프라 기준을 분리한다면 간단하지만 특정 환경이 격리된다면 누락된 데이터가 발생할 수 있습니다.
 반면 환경 기준으로 분리한다면 복잡할 뿐더러 환경 별로 누락된 데이터가 존재할 수 밖에 없습니다.

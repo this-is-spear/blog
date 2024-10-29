@@ -1,5 +1,11 @@
 const projectsData = [
   {
+    title: '서비스 환경 변수 정복기',
+    description: `서비스 환경 변수 설정 공통화 작업 과을 공유합니다.`,
+    imgSrc: '/static/images/project/service-configuration/9.png',
+    href: 'https://tis-blog.vercel.app/blog/project/service-configuration',
+  },
+  {
     title: '상상까지 더 한 알림 시스템 개선기',
     description: `애플리케이션과 데이터베이스만 활용해 확장 가능한 알림 서비스 구축기를 경험했습니다.`,
     imgSrc: '/static/images/project/design-notification-system/0.png',
