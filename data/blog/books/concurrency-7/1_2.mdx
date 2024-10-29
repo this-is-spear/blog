@@ -132,7 +132,7 @@ fun main() {
 }
 ```
 
-#### Condition
+### Condition
 
 `await`, `signal` 사이 동작은 다음과 같은 특징을 가진다.
 
@@ -231,7 +231,7 @@ private static class ProducerConsumerExample {
 
 해당 방식은 뮤텍스와 스핀락과 유사하다. 스핀락은 작업자가 많아질 수록 경쟁 조건이 치열해지는데 이런 경우 뮤텍스 방식으로 경쟁 조건을 완화할 수 있다.
 
-#### Fairness
+### Fairness
 
 `ReentrantLock`은 공정성 옵션을 추가할 수 있다.
 공정성 옵션을 추가하면 먼저 요청한 스레드부터 실행한다.
