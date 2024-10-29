@@ -3,18 +3,30 @@ title: 서비스 환경 변수 정복기
 date: '2024-10-29'
 tags: ['프로젝트', '회고']
 draft: false
-layout: PostBanner
-images: ['/static/images/project/service-configuration/1.png']
+images: []
 summary: oo
 ---
 
+![그림 1](/static/images/project/service-configuration/1.png)
+
+
+## 상황
+
+환경 변수 관리에 어려움을 겪고 있습니다.
+동일한 값을 매핑하지만 키가 다른 경우가 있거나 같은 키를 가지지만 값이 다른 경우가 있어서 관리에 차질이 생기고 있습니다.
+
+## 문제
+문제는 두 가지로 정의할 수 있습니다.
+
 <div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        설명 설명
+        <h3>문제 1 : 서비스 마다 존재하는 환경 별 구성 파일</h3>
+        <p>첫 번째 문제는 환경 별 구성되는 파일로 관리 복잡도가 커졌습니다. 새로운 환경 변수가 추가되면 모든 환경에 맞게 구성하는 번거로움이 발생했습니다.</p>
         ![그림 1](/static/images/project/service-configuration/2.png)
     </div>
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
-        설명 설명
+        <h3>문제 2 : 환경 변수 별 약간의 오차</h3>
+        <p>같은 `value`를 가지지만 `key`가 다르거나 같은 `key`를 가지지만 `value`가 다른 케이스가 종종 있습니다. 이런 문제로 `value` 매핑 과정에서 껄끄럽지 못한 상황이 발생합니다.</p>
         ![그림 1](/static/images/project/service-configuration/3.png)
     </div>
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
@@ -35,6 +47,52 @@ summary: oo
     </div>
 </div>
 
+## 원인
+
+원인 또한 두 가지로 정의할 수 있습니다.
+
+- 환경마다 큰 차이가 없지만 따로 관리해 복잡도를 높이고 있다.
+- 관리 방법이 달라 환경 변수에 오차가 생기고 있다.
+
+두 가지 원인으로 배포마다 휴먼 에러가 발생해 피로감 누적되고 있습니다.
+이번 기회에 데브옵스 팀과 함께 환경 변수 정복해보려 합니다.
+
+
+### 해결
+
+모든 환경은 동일한 템플릿을 사용하며 동일한 환경 키를 관리한다.
+
+
+<div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        설명 설명
+        ![그림 1](/static/images/project/service-configuration/4.png)
+    </div>
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        설명 설명
+        ![그림 1](/static/images/project/service-configuration/5.png)
+    </div>
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        설명 설명
+        ![그림 1](/static/images/project/service-configuration/6.png)
+    </div>
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        설명 설명
+        ![그림 1](/static/images/project/service-configuration/7.png)
+    </div>
+</div>
+
+
+<div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        설명 설명
+        ![그림 1](/static/images/project/service-configuration/6.png)
+    </div>
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        설명 설명
+        ![그림 1](/static/images/project/service-configuration/7.png)
+    </div>
+</div>
 
 ![그림 1](/static/images/project/service-configuration/8.png)
 
