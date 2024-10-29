@@ -23,12 +23,12 @@ summary: oo
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
         <h3>문제 1 : 서비스 마다 존재하는 환경 별 구성 파일</h3>
         ![그림 2](/static/images/project/service-configuration/2.png)
-        <p>첫 번째 문제는 환경 별 구성되는 파일로 관리 복잡도가 커졌습니다. 새로운 환경 변수가 추가되면 모든 환경에 맞게 구성하는 번거로움이 발생했습니다.</p>
+        <p>새로운 환경 변수가 추가되면 모든 환경에 맞게 구성하는 번거로움이 발생했습니다.</p>
     </div>
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
         <h3>문제 2 : 환경 변수 별 약간의 오차</h3>
         ![그림 3](/static/images/project/service-configuration/3.png)
-        <p>같은 `value`를 가지지만 `key`가 다르거나 같은 `key`를 가지지만 `value`가 다른 케이스가 종종 있습니다. 이런 문제로 `value` 매핑 과정에서 껄끄럽지 못한 상황이 발생합니다.</p>
+        <p>같은 `value`지만 `key`가 다르거나 같은 `key`지만 `value`가 다른 케이스가 있어 매핑 과정이 껄끄럽지 못합니다.</p>
     </div>
 </div>
 
@@ -65,7 +65,7 @@ summary: oo
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
         <h3>횡단 관심사</h3>
         ![그림 1](/static/images/project/service-configuration/6.png)
-        먼저 횡단적인 관심사를 분리해 시각화하면서 관리 대상에 맞는 책임을 명확히 할 수 있었습니다. 특히나 각 관리 영역에 맞게 어떤 위치를 고수해야 할지 고민할 필요성을  느꼈습니다.
+        횡단적인 관심사를 분리해 시각화하면서 관리 대상에 맞는 책임을 명확히 할 수 있었습니다. 특히나 각 관리 영역에 맞게 어떤 위치를 고수해야 할지 고민할 필요성을 느꼈습니다.
     </div>
     <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
         <h3>종단 관심사</h3>
