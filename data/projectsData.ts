@@ -3,7 +3,7 @@ const projectsData = [
     title: '서비스 환경 변수 정복기',
     description: `서비스 환경 변수 설정 공통화 작업 과을 공유합니다.`,
     imgSrc: '/static/images/project/service-configuration/9.png',
-    href: 'https://tis-blog.vercel.app/blog/정roject/service-configuration',
+    href: 'https://tis-blog.vercel.app/blog/project/service-configuration',
   },
   {
     title: '상상까지 더 한 알림 시스템 개선기',
