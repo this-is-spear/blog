@@ -1,0 +1,155 @@
+---
+title: 11월 2주 있었던 일 정리
+date: '2023-11-10'
+tags: ['회고', '자아성찰', '집킨', '핀포인트']
+draft: false
+summary: 개발 월동기
+images: []
+---
+
+## Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 잘하는 개발자란 무엇일까
+
+잘한다는 건 어려운 의미가 아니었어.
+당장 게임을 잘하려면 잘하는 사람들은 어떻게 하는지 보는 것처럼 개발도 마찬가지야.
+잘하는 사람들은 어떻게 개발하는지 어떤 생각을 가지는지, 앞으로 어떻게 앞서나갈건지를 보면 돼.
+
+사람 사는 삶은 비슷해.
+잘하고 싶으면 잘하는 사람들은 어떻게 하는지 보고 따라하면 되지 않겠어?
+국내에서 잘하고 싶다면 국내 트렌드에 맞게 어떤 문제를 고민하고 어떻게 해결했을지 파악하고 다음 발자취가 어떻게 될지 고민해보는게 중요해.
+
+프로그래밍도 마찬가지야.
+어떤 프로그래밍이 잘나가는지, 어떤 방향으로 진보하는지 파악하면 돼.
+이런 결론이 짧은 근거로 탄생한 것 처럼 보이지만, 결국 방향은 사용자의 니즈에 맞게 변화하는 거라고 생각하면 타당하다고 생가해.
+
+그래서 한 가지 기술에 매몰되어서 짧은 식견을 가지지 않도록 노력할거야.
+2023년 개발 트렌드만 봐도 국내 데이터베이스 사용량은 `RDB`가 우세하지만 검색량은 `NoSQL`이 우세한 것처럼 준비가 되면 변경 할 수 있는 준비를 마친 것처럼 변화에 반응 할 수 있도록 노력해야겠어.
+
+![그림 3](/static/images/reminiscence/11m2w/3.png)
+
+결론은 기술은 사용자 니즈에 따라 변화하기에 사용자 니즈에 맡게 변화하는 기술 트렌드에 민감하게 변화하고 변화한 기술을 전문화해서 역량을 늘려나갈 필요성을 느꼈다는거야.
+
+## 메트릭 수집 툴 정리
+
+장애 상황을 확인했을 때 서버 간 통신 과정을 하나의 트랜잭션으로 확인 할 수 있다면 더 빠르게 원인을 파악 할 수 있었던 케이스가 많았어.
+이러한 이유로 시스템 시각화의 중요성을 깨달았고, 우리가 예상한대로 그리고 효율적이고 안정적으로 동작하는지 확인하기 위해 지표 수집 툴이 필요했어.
+
+그래서 찾아본 메트릭 수집 툴은 집킨과 핀포인트야. 둘은 고른 이유는 여러 대로 구성된 서비스에서 하나의 요청을 트랜잭션 단위로 관리 할 수 있게 도와줘.
+각 수집 툴이 보여주는 정보는 다음 GIF로 보여줄 수 있어.
+
+<table>
+    <thead>
+    <tr>
+        <th>Zipkin</th>
+        <th>Pinpoint</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td>
+            ![그림 1](/static/images/reminiscence/11m2w/1.gif)
+        </td>
+        <td>
+            ![그림 2](/static/images/reminiscence/11m2w/2.gif)
+        </td>
+    </tr>
+    </tbody>
+</table>
+
+> 이미지 로드 시간을 줄이기 위해서 리사이즈 했어.
+
+간단하게 각각의 특징을 설명하고 차이점을 설명해볼게.
+
+### Zipkin
+
+`Zipkin`은 요청을 받은 시간과 응답을 보낸 시간을 기록해 분산 시스템 간 소요 시간을 측정 할 수 있어.
+
+`Zipkin`은 지연 또는 오류로 인해 사용자 코드가 지연되거나 중단되는 것을 방지하기 위해 비동기적으로 확장되니 시스템에 영향을 미치지 않아.
+애플리케이션은 스토리지에 적재하는 `Zipkin collector`로 추적 데이터를 전송 해.
+그 후 스토리지를 쿼리하여 `UI`에 데이터를 제공하고 있지.
+
+`Zipkin`의 가장 큰 장점은 데이터베이스 선택 폭이 넓다는 거야.
+기존에는 Cassandra 만 제공했지만 현재는 ElasticSearch 및 MySQL까지 사용 할 수 있지.
+
+`Zipkin`을 사용 할 때 주의할 점은 UI에 인증 기능이 없으니 알아서 만들어야 해.
+
+### Pinpoint
+
+`Pinpoint`는 크게 [agent 이벤트](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/bo/event/AgentEventBo.java),
+[deadlock 이벤트](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/bo/event/DeadlockBo.java),
+[monitoring 이벤트](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/bo/event/MonitorInfoBo.java)
+를 실시간으로 확인 할 수 있고,
+[thread dump 정보](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/bo/event/ThreadDumpBo.java),
+[thread state 정보](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/bo/event/ThreadState.java)
+를 수집 할 수 있어.
+
+추가로 [`tracer` 가 수집하는 정보](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/trace/ApiDescriptionParser.java)
+를 활용해 메서드 간 실행 시간을 파악 할 수 있지.
+
+`Pinpoint`는 원격 호출 시 분산 트랜잭션의 추적을 위해 애플리케이션 수준에서 태그 데이터를 호출 헤더에 추가해서 관리 해.
+
+`Pinpoint`는 `TransactionId`로 연관된 N개의 `Span`를 찾아낼 수 있고, `SpanId`와 `ParentSpanId`로 `N`개의 `Span`을 트리로 정렬할 수 있어.
+관련 정보는 해당 [코드](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/bo/SpanBo.java)에서 확인 가능해.
+
+코드를 수정하지 않고도 분산 트랜잭션 추적 기능을 제공하길 원했고 코드 수준의 가시성을 원했어.
+이 문제를 해결하기 위해 `bytecode instrumentation` 기법을 도입했고, `Pinpoint Agent`는 `RPC` 호출 코드를 가로채 태그 정보를 자동으로 처리한다.
+메타데이터를 활용해 정보를 가져오는 건 해당 [코드](https://github.com/pinpoint-apm/pinpoint/blob/master/commons-server/src/main/java/com/navercorp/pinpoint/common/server/trace/DefaultApiParser.java)에서 확인 가능해.
+
+`Pinpoint`의 가장 큰 장점은 프로파일링 정보를 제공한다는 점이야.
+메서드 분기마다 실행 시간을 확인 해 쉽게 병목지점을 파악 할 수 있지.
+
+또한 코드를 수정하지 않고도 분산 트랜잭션 추적 기능을 제공하길 원했고 코드 수준의 가시성을 원했어.
+만약 코드 수정 없이 위 기능을 제공받고 싶다면 `Pinpoint`가 제격이라 생각해.
+
+### 차이점
+
+`Zipkin`은 분산 시스템을 추적하는 도구지만 `Pinpoint`는 메서드당 실행 시간을 측정하는 프로파일러 도구에 가까워.
+
+`Zipkin`은 `TransactionId`가 충돌하는 것은 자연스러운 상황으로 판단해.
+그러나 `Pinpoint`에서는 `TransactionId`의 충돌 확률을 낮추기 위해 노력했지.
+트래픽이 많다면 고유 키가 충돌하는 상황이 발생 할 수 있는데, 이럴 때는 `Pinpoint`가 강점으로 보일 수 있어.
+그러나 `Zipkin` 에서 키를 발급 할 때 난수를 사용 할텐데, 동일한 시간대에 동일한 난수가 발생하지 않고 텀을 두고 발생할 드새.
+시간대를 유추했을 때 다른 요청임을 파악 할 수 있다는 게 견해고 큰 장점으로 보이지 않는게 장점이야.
+
+개인적인 견해로는 자세한 프로파일링이 필요하다면 `Pinpoint`가 장점처럼 보이고 그렇지 않다면 `Zipkin`을 선택하는 게 맞다고 봐.
+가장 많은 데이터가 수집되는 로그 시스템에서 데이터베이스 만큼 관리하기 어려운 곳이 없어.
+그만큼 유연하게 데이터베이스를 선택하는 건 러닝 커브를 반 이상을 줄일 수 있다고 생각해.
+
+아직 시연만 해보고 운영에서 적용하지 못해 관리 시점에서 큰 차이점을 느끼진 못했어.
+이번 기회에 사이드 프로젝트를 적용하면서 두 개의 툴을 비교해보려고 해.
+
+- 참고 자료 : [zipkin vs pinpoint](http://www.andrew-programming.com/2019/09/27/zipkin-vs-pinpoint/)
+- 참고 자료 : [zipkin architecture](https://zipkin.io/pages/architecture.html)
+- 참고 자료 : [pinpoint overview](https://d2.naver.com/helloworld/1194202)
+
+## 마이그래이션
+
+운영하는 제품의 스프링 버전이 2.7이야 그래서 3.X 버전으로 올릴 준비를 하고 있어.
+
+여러 개의 제품 중 일부를 먼저 마이그레이션 작업을 진행하고 문서를 만들어 사내에 공유할 생각이야.
+작성되는 문서 구조는 다음과 같아.
+
+- 컴파일 타임 이슈
+- 런타임 이슈
+
+아무래도 마이그레이션하면 어떤 문제가 발생할지가 큰 걱정이지.
+심지어 발생하는 문제 범위도 커서 망설이게 되잖아.
+그래서 컴파일과 런이라는 두 개 상황으로 구분해서 공유해보려 해.
+
+현재까지 마이그레이션에는 성공했지만 어떻게 하면 더 쉽게 확인 할 수 있을지 고민하고 있어.
+
+## 테스트 코드
+
+최근 팀 내에서 `이펙티브 소프트웨어 테스팅` 책을 읽었어.
+책을 읽고 현재 커버리지 수치에서 10% 높이기 위해 피트 스탑 정책을 시행하고 있지.
+
+나는 하나의 행위를 기준으로 명세 기반 테스트를 고려하고 구조 기반 테스트를 작성해 제품에 기여하고 있어.
+
+요즘 TDD는 필요 없고 테스트 코드를 많이 작성하라는 이야기가 많더라.
+나는 어떤 걸 테스트 할지도 모른체 테스트 코드를 작성하는건 의미없는 코드들만 늘어난다고 생각해.
+결국 요구사항을 테스트 코드로 작성하고 그에 맞게 구현하는게 더 빠르지 않을까 생각하는게 나의 지론이야.
+
+지금은 새롭게 합류하는 개발자에게 적응하라고 TDD를 활용해 페어프로그래밍을 하는 용도에 그치지 않지만, 개발 및 유지까지 전체 프로세스를 효율적으로 이어나갈 수 있는 방법이라 생각해.

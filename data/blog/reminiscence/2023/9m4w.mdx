@@ -1,0 +1,191 @@
+---
+title: 9월 4주 있었던 일 정리
+date: '2023-09-24'
+tags: ['회고', '트러블 슈팅', '테스트']
+draft: false
+summary: 프로젝트 중간 점검을 마치며 있었던 일 정리
+---
+
+## Introduction
+
+회사에 입사하고 나서 실무에서 많은 경험을 하고 있는데, 귀중한 경험을 정리하지 않고 떠나보내는게 너무 아쉬워 매 주 글을 정리 해볼까 해
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+
+## 1. 트러블 슈팅 - PrematureCloseException 에러
+
+운영 환경에서 실행하는 도중 다음과 같은 에러가 발생했고, 전달되어야 할 API 요청과 이후 실행되어야 할 `Job`이 실행되지 않았어.
+본문 내용을 추측했을 때, 응답을 보내기 전 `Connection` 이 영구적으로 닫힌 모습을 볼 수 있었어.
+
+```plain
+reactor.netty.http.client.HttpClientConnect    : [6c3afa98-2, L:/x.x.x.x:x ! R:api/x.x.x.x:x] The connection observed an error
+reactor.netty.http.client.PrematureCloseException: Connection prematurely closed BEFORE response
+reactor.core.publisher.Operators         : Operator called default onErrorDropped
+
+Error has been observed at the following site(s):
+*__checkpoint ⇢ Request to PATCH http://api:8080/complete [DefaultWebClient]
+```
+
+서비스의 흐름으로 유추 할 때 backup 과정에서 대기하는 시간이 길어지다보니 `Connection`이 닫힌듯 해.
+
+![프로세스 과정](/static/images/reminiscence/9m4w/8.png)
+
+본문 내용을 추측 해 문제 상황을 구성하기 위해 다음과 같이 코드를 작성했어!
+
+```java
+public Mono<Void> backup(int limit, int offset) {
+    return registrations
+        .flatMap(api::progressBackup)
+        .flatMap(registration -> {
+            // 4 분 동안 대기
+            Thread.sleep(4*60*1000);
+            return Flux.just(registration);
+        }).flatMap(api::completeBackup)
+        .then();
+}
+```
+
+위 코드에서 동일한 예외가 발생했고, 이와 관련된 [문서화](https://projectreactor.io/docs/netty/snapshot/reference/index.html#faq.connection-closed)를 통해 문제를 해결 해보려고 다음처럼 정리했어.
+
+- 서버들은 `keep-alive` 를 유지하기 위해 probe 를 보낸다.
+- 서버들은 자신들의 커넥션을 지속적으로 관리한다.
+- 자신이나 상대가 커넥션을 끊었는데, 통신을 하려하면 문제가 된다.
+
+### 해결 방법 1 - evictInBackground 메서드 사용
+
+백그라운드 제거를 사용하도록 설정하면 커넥션 풀에서 닫힌 커넥션들을 주기적으로 정리하게 돼.
+
+즉, `webclient` 에서 사용하는 `connection pool` 내부에 연결이 끊긴 커넥션을 방출하는 작업을 한다고 볼 수 있어.
+
+```java
+public final SPEC evictInBackground(Duration evictionInterval) {
+	this.evictionInterval = Objects.requireNonNull(evictionInterval, "evictionInterval");
+	return get();
+}
+```
+
+### 해결 방법 2 - `KeepAlive`를 계속해서 유지한다.
+
+**`SO_KEEPALIVE`를** 설정하게 되면 연결이 일정 시간 동안 유휴 상태로 유지될 수 있도록 통신하는 피어에 probe를 계속해서 보내고 있어.
+
+> `Keepalive`는 프로브를 통해 연결이 계속 작동 중임을 확신 할 수 있습니다.
+> 실제로 프로브는 크기가 0인 데이터 패킷을 사용해 TCP 연결을 유지하게 됩니다.
+> 스트림을 전달하는 도중에 프로브가 주기적으로 전달되도 사용자 프로그램에 위험하지 않습니다.
+
+실제로 어떻게 전달받는지 확인하기 위해서 [`Wireshark`](https://www.wireshark.org/)를 활용해서 패킷을 캡처했어.
+`Wireshark` 덕분에 MySQL 과 인텔리제이 간 연결을 유지하기 위해 prove 를 주고 받는 모습을 볼 수 있었어! 신기하더라 ㅋㅋ
+
+```
+X.900015	SIP	DIP	TCP	44	[TCP Keep-Alive] 3306 → 53226 [ACK] Seq=2834 Ack=488 Win=407808 Len=0
+X.900073	DIP	SIP	TCP	56	[TCP Keep-Alive ACK] 53226 → 3306 [ACK] Seq=488 Ack=2835 Win=405440 Len=0 TSval=xxx TSecr=xxx
+```
+
+> 확인 중에 알 수 있었던 건 인텔리제이에서 DB 와 세션을 유지 할 때, 53XXX 포트 번호를 사용하고 있더라.
+
+서버간에 통신을 확인하고 싶어 패킷을 조사 했지만, 도커 통신으로 이뤄지고 있던터라 패킷 분석이 어려웠어 ㅜㅜ 😭
+도커와 관련된 지식이 아쉽더라,,, 꼭 학습해야겠어 🔥
+
+[참고자료](https://tldp.org/HOWTO/TCP-Keepalive-HOWTO/overview.html)
+
+### 적용한 내용
+
+아쉽게도 `SO_KEEPALIVE`는 제대로 동작하지 않고 커넥션이 끊긴 모습을 확인했고 **주기적으로 프로브가 제대로 전달되지 않고** 있었어.
+`SO_KEEPALIVE`를 사용하게 되면 쉽게 관리 할 수 있을 텐데 말이지,,,
+결국 `evictInBackground` 메서드 사용해 주기적으로 커넥션을 관리할 수 있도록 설정했어.
+
+```diff-js:Configuration.java
+    @Bean
+    WebClient webclient() {
++        final var provider = ConnectionProvider.builder("provider")
++                .maxConnections(10)
++                .maxIdleTime(_58_SECONDS)
++                .maxLifeTime(_58_SECONDS)
++                .pendingAcquireTimeout(_5_SECONDS)
++                .pendingAcquireMaxCount(INFINITY)
++                .evictInBackground(_30_SECONDS)
++                .lifo()
++                .metrics(true)
++                .build();
+        return WebClient.builder()
+                .baseUrl(baseUrl)
++                .clientConnector(new ReactorClientHttpConnector(
++                        HttpClient.create(provider)
++                                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, _3_SECONDS)
++                                .doOnConnected(connection -> connection
++                                        .addHandlerLast(new ReadTimeoutHandler(FIVE))
++                                        .addHandlerLast(new WriteTimeoutHandler(FIVE))
++                                )))
+                .codecs(config -> config.defaultCodecs().maxInMemorySize(_2_MEGA_BYTES))
+                .build();
+    }
+},
+```
+
+### 경험을 통해 느낀점
+
+테스트를 통해 안정성에 의심이 없었지만, 운영 환경에서 실행하는 순간 예상치 못한 트러블이 발생했어!
+
+트러블 슈팅 과정에서 어떤 테스트가 운영 환경에서의 안정성까지 확보해줄지, 그런 테스트를 효율적으로 작성하는 방법이 무엇인지를 고민 할 수 있었어.
+
+이번 기회에 [소프트웨어 테스팅](https://product.kyobobook.co.kr/detail/S000201055864) 책을 읽으며 효율적인 트러블 슈팅을 고민 할거야.
+
+## 2. 프로젝트 중간 점검
+
+프로젝트 마감 기한이 얼마 남지 않으면서 부족한 시간 안에 목표한 퀄리티로 구현하기는 어려웠어.
+
+![이상과의 괴리](/static/images/reminiscence/9m4w/1.png)
+
+시간이 부족한 상황에서도 특정한 영역의 퀄리티를 유지하거나 높게 가질 수 있다는 걸 깨닫기도 했어.
+
+> 이번 프로젝트에서 쿼리가 많고 데이터 조회 양이 많기 때문에 성능에 집중을 해야했고, 커맨드가 없어서 안정성과 시각화를 줄여 결과보다는 과정에 집중해야 했어.
+> ![선택과 집중](/static/images/reminiscence/9m4w/2.png)
+
+실무를 경험하면서 가장 크게 깨달았던 건 문제를 해결하는 데 정답이 정형화되지 않아 직접 찾으며 나아가는 일이었어.
+
+직무의 특성을 고려해 이슈와 상황을 기반으로 내린 가설을 증명하는 능력을 준비 했지만, 다양한 문제가 발생할 수 있는 상황에서 많은 요구사항을 해결 하기란 생각보다 어려웠지,,, (시간이 기다려주질 않아,,,)
+
+> 면접관 분들이 구현보다 구현하면서 생긴 고민을 물어보는 이유는 직무의 특성 때문이라는 생각이 들었어.
+> 결국 모든 업무는 자신의 한계를 뛰어넘는 이슈들이니 어느정도 합당한 결론을 도출할 수 있는 사람이길 바라는게 아닐까 생각이 든당.
+
+
+## 3. 오랜만에 경함한 공유의 기쁨
+
+[스프링 문서](https://docs.spring.io/spring-batch/docs/current/reference/html/)로 스프링 배치를 학습하며 글을 정리해 팀 내에 공유하는 시간을 가졌어.
+
+처음에는 문서를 읽고 이해한 내용을 바탕으로 정리했지만, 내가 쓴 글을 보면서 정말 재미없고 이해하기 어려웠어. 열심히 만들었는데, 가치가 없는건 정말 슬픈 일이야.
+
+![처음으로 정리한 문서](/static/images/reminiscence/9m4w/3.png)
+
+> 문서를 번역한 느낌이라 아쉬운 점이 많았어.
+
+비효율적인 문서화는 지양하는 터라 프로젝트에 적용하면서 꼭 필요한 지식인 것만 추리고 추려서 글로 정리했어!
+
+<div className="-mx-2 flex flex-wrap overflow-hidden xl:-mx-2">
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        > 잡 인스턴스 개념을 이해해야 배치 프로세스 간 데이터를 공유하는 프로세스를 이해할 수 있다는 내용
+
+
+        ![1](/static/images/9m4w/4.png)
+    </div>
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        > 잡 인스턴스 내부에 컨텍스트가 저장되는 `JobExecution` 에 대한 내용
+
+
+        ![2](/static/images/9m4w/5.png)
+    </div>
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        > 분리된 Step 에서 컨텍스트가 어떻게 공유되는지 설명하는 내용
+
+
+        ![3](/static/images/9m4w/6.png)
+    </div>
+    <div className="my-1 w-full overflow-hidden px-2 xl:my-1 xl:w-1/2 xl:px-2">
+        > chunk 사이즈로 분리했을 때 어떻게 동작하는지 로그를 찍는 상황
+
+
+        ![4](/static/images/9m4w/7.png)
+    </div>
+</div>
+
+누군가 이 글을 읽게 된다면 어떻게 하면 잘 활용할 수 있을지, 어떤 한계점이 있으니 주의해야 할지 고민하면서 작성했고, 이런 고민들 덕분에 조금 더 깊게 공부 할 수 있었어.

@@ -1,0 +1,155 @@
+---
+title: 인수테스트 - 코틀린을 이용해 깔끔한 인수테스트 작성하기
+date: '2024-09-30'
+tags: ['클린 프로젝트', '코틀린']
+draft: false
+summary: 테스트 컨테이너와 상용 코드 정리하기
+images: []
+---
+
+### Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+
+### 테스트컨테이너 - 애너테이션을 이용해 테스트 환경을 구성한다.
+
+스프링 3버전부터 애너테이션을 이용해 빈으로 등록할 수 있다. 컨테이너 관리가 쉽도록 빈으로 등록해서 관리하는게 포인트다.
+
+```kotlin
+@TestConfiguration(proxyBeanMethods = false)
+class TestcontainersConfiguration {
+    @Bean
+    fun mariaDbContainer(registry: DynamicPropertyRegistry): MariaDBContainer<*> = MariaDBContainer(DockerImageName.parse("mariadb:latest"))
+        .withDatabaseName("point")
+        .withInitScript("schema.sql")
+        .withExposedPorts(3306)
+        .withReuse(true).apply {
+            registry.add("spring.datasource.url") { jdbcUrl }
+            registry.add("spring.datasource.username") { username }
+            registry.add("spring.datasource.password") { password }
+        }
+
+    @Bean
+    fun redisContainer(registry: DynamicPropertyRegistry): GenericContainer<*> = GenericContainer(DockerImageName.parse("redis:latest"))
+        .withExposedPorts(6379)
+        .withReuse(true).apply {
+            registry.add("spring.redis.host") { host }
+            registry.add("spring.redis.port") { firstMappedPort }
+        }
+}
+
+```
+
+- `org.testcontainers:mariadb` 의존성을 추가하는 이유
+  - `GenericContainer`로 실행 가능하지만 `MariaDBContainer` 로 실행하면 데이터베이스 초기화 관련 기능을 사용할 수 있다.
+
+
+- `dynamic property` 설정
+  - `dynamic property`는 실행 시점에 환경 변수를 주입할 수 있는 방법이다. 보통 static 메서드에 `@DynamicPropertySoruces` 애너테이션을 붙여 주입한다.
+  - `static` 메서드에 주입해서 사용하려면 테스트 대상 클래스에 포함시켜야 해서 애너테이션으로 분리가 불가능하다. 애너테이션으로 분리하기 위해서는 빈에 등록하는 시점에 추가해야 한다. 다음은 예시다.
+
+```kotlin
+@Bean
+fun container(registry: DynamicPropertyRegistry): GenericContainer<*> =
+GenericContainer(DockerImageName.parse("..."))
+.withReuse(true).apply {
+    registry.add("spring.redis.host") { host }
+    registry.add("spring.redis.port") { firstMappedPort }
+}
+```
+
+
+- `@TestConfiguration(proxyBeanMethods = false)` 선언하는 이유
+  - 뭐 별거 없어보인다. 로딩 속도를 빠르게 하기 위해서라고 한다.
+
+
+다음처럼 `Import` 애너테이션으로 컨테이너 추가에 쉽게 대응하고 있다.
+
+```kotlin
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.RUNTIME)
+@Import(TestcontainersConfiguration::class)
+annotation class EnableTestContainers
+```
+
+### 코틀린 - 인수 테스트는 확장 함수를 이용한다.
+
+코틀린 확장 함수를 이용해 통신 코드를 구현했다.
+
+```kotlin
+
+fun MockMvc.포인트_사용(userId: Long, amount: Int) =
+			this.patch("/points/use") {
+          contentType = MediaType.APPLICATION_JSON
+          header(X_AUTHENTICATED_USER, userId)
+          content = /* request */
+      }.andExpect {
+          status { isOk() }
+      }
+
+```
+
+나는 쉽게 갖다 쓰면 된다. 테스트 코드 가독성이 개선됐다.
+
+```kotlin
+@Integration
+class CancelRedeemPointIntegrationTest {
+    @Autowired
+    lateinit var mockMvc: MockMvc
+
+    /**
+     * 1. 3번 회원은 30 포인트를 적립한다.
+     * 2. 3번 회원은 보유 포인트 30을 확인한다.
+     * 3. 3번 회원은 10 포인트를 사용한다.
+     * 4. 3번 회원은 보유 포인트 20을 확인한다.
+     */
+    @Test
+    fun `포인트 사용 시나리오 테스트`() {
+        val userId = 3L
+
+        mockMvc.보유_포인트_조회(userId) shouldBe 0
+
+        mockMvc.포인트_적립(userId, 30)
+        mockMvc.보유_포인트_조회(userId) shouldBe 30
+
+        mockMvc.포인트_사용(userId, 10)
+        mockMvc.보유_포인트_조회(userId) shouldBe 20
+    }
+}
+```
+
+덕분에 인수 테스트가 추가되도 쉽게 대응할 수 있다.
+
+```kotlin
+@AplusPointIntegration
+class GiftPointIntegrationTest {
+    @Autowired
+    lateinit var mockMvc: MockMvc
+
+    /**
+     * 1. 3번 회원은 0 포인트를 보유하고 2번 회원은 0 포인트를 보유한다.
+     * 2. 3번 회원은 30 포인트를 적립한다.
+     * 3. 3번 회원은 30 포인트를 보유한다.
+     * 4. 3번 회원은 2번 회원에게 30 포인트를 선물한다.
+     * 5. 3번 회원은 0 포인트를 보유하고 2번 회원은 30 포인트를 보유한다.
+     */
+    @Test
+    fun `포인트 선물 시나리오 테스트`() {
+        val sourceUserId = 3L
+        val targetUserId = 2L
+        val availablePoints = 100
+        val sendingPoints = 30
+
+        mockMvc.보유_포인트_조회(sourceUserId) shouldBe 0
+        mockMvc.보유_포인트_조회(targetUserId) shouldBe 0
+
+        mockMvc.포인트_적립(sourceUserId, availablePoints)
+        mockMvc.보유_포인트_조회(sourceUserId) shouldBe availablePoints
+
+        mockMvc.포인트_선물(sourceUserId, targetUserId, sendingPoints)
+        mockMvc.보유_포인트_조회(sourceUserId) shouldBe availablePoints - sendingPoints
+        mockMvc.보유_포인트_조회(targetUserId) shouldBe sendingPoints
+    }
+}
+```

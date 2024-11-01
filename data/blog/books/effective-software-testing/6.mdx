@@ -1,0 +1,160 @@
+---
+title: Software Testing 6 | 테스트 더블로 쉽게 테스트 할 수 있어.
+date: '2023-10-29'
+tags: ['책', '이펙티브 소프트웨어 테스팅', '테스트']
+draft: false
+summary: 테스트 더블을 적재적소에 사용하는 방법
+---
+
+## Introduction
+
+행위를 테스트 할 때마다 다른 행위와 의존되는 상황을 어떻게 관리할지 다들 고민해본적이 있을거야.
+
+만약 의존되는 상태라면 발생할 수 있는 테스트 케이스가 엄청 많아지고 중복도 많아지게 되겠지. 그럼 테스트 관리가 어려워질거야.
+다른 행위에 의해 결과가 의존되는 상황이 아닌 내가 원하는 케이스를 테스트 할 수 있도록 테스트 더블이 도와줄 수 있어.
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 테스트 더블
+
+다른 클래스를 의존하는 클래스를 테스트할 때 테스트 더블을 사용하면 **원하는 영역 만**을 **편리하게** 테스트 할 수 있어.
+또한 테스트 더블을 활용하면 테스트 맥락을 유도해서 원하는 검증만을 수행 할 수 있지.
+
+테스트 더블 장점을 정리해봤어.
+
+- 제어권 획득 : 원하는 흐름으로 프로그램 동작 유도 가능
+- 빠른 검증 : 의존되는 객체들의 실행 시간 무시 가능
+
+시뮬레이션 방식은 총 다섯 가지가 존재 해.
+각각의 시뮬레이션 방식을 정리해볼게
+
+- 더미 객체
+    - 설명 : 테스트 클래스에 전달되지만 절대 사용되지 않는 객체를 의미해.
+    - 예시 : 컬렉션을 검증한다면 내부에는 더미 객체들을 넣고 컬렉션을 검증한다고 볼 수 있어.
+- 페이크 객체
+    - 설명 : 실제로 동작하는 객체를 사용해.
+    - 예시 : 데이터베이스에 의존하는 서비스가 있다면 간단하게 구현된 데이터베이스로 의존성 주입해서 서비스 로직만 빠르게 검증할 수 있어.
+- 스텁
+    - 설명 : 하드 코딩된 응답을 제공할 때 사용해.
+    - 예시 : 보통 날짜로 유효한지 검사하게 될 때 특정 날짜를 넣어서 테스트 하곤 해.
+- 모의 객체
+    - 설명 : 객체 없이 행위 만을 모방하는 방법을 말해. 스텁과는 유사하지만 인스턴스가 없어.
+    - 예시 : HttpReqeust 를 상속받아 객체를 만든다면 정말 많은 메서드를 구현해야 해. 이런 경우 필요한 함수만 모방해서 사용 할 수 있어.
+- 스파이
+    - 설명 : 호출되는 객체의 행동을 감시할 때 사용해.
+    - 예시 : 잘 사용하지 않지만 실제 객체가 몇 번 호출 됐는지 정도를 판단 할 수 있어보여,
+
+## 모의 객체
+
+책에서는 모의 객체와 관련해서 많은 이야기가 나와.
+다른 시뮬레이션 방식과는 다르게 코드 작성이 정말 간결하고 행위를 검증하기 간단하기 때문이라고 생각해.
+
+- 모의 객체 장점
+    - 🛠 작성중
+- 모의 객체 단점
+    - 🛠 작성중
+
+소유하지 않은 것을 모의하기 위해서는 중간에 레이어를 한 층 더 두는 방법이 있지.
+아마 테스트를 작성할 때 작성하기 가장 어려운건 인자 없이 결과가 임의로 나오는 코드일 거야.
+예를 들어 `LocalDateTime.now()` 가 있지.
+
+```java
+public class Clock() {
+    public LocalDateTime now() {
+        return LocalDateTime.now();
+    }
+}
+
+public class DateTest {
+    @Test
+    public void test() {
+        final var 시계 = new Clock();
+        when(시계.now()).thenReturn(LocalDateTime.of(2023, 8, 2));
+    }
+}
+```
+
+책과는 달리 `Mockito`, `BDDMockito` 와 관련해서 이야기를 나눠보고 `kotest` 에서는 어떻게 모의객체를 만드는지 살펴볼게.
+
+### Mockito, BDDMockito
+
+`Mockito`는 행위를 모방하고, 행위를 검증하는 두 가지 정도의 메서드만 알면 쉽게 사용 할 수 있어.
+
+```java
+Mockito.when(backupConcurrency.lockAndStart(any())).thenReturn(Mono.empty());
+Mockito.verify(backupConcurrency, times(2)).lockAndStart(any());
+```
+
+`BDDMockito`는 `Mockito`와 유사해.
+단지 주어지는 메서드 체인이 `given`, `when`, `then`으로 주어져서 BDD 스타일 테스트를 쉽게 관리 할 수 있어.
+
+```java
+// 행위가 주어지면(given) 응답을 반환하라(willReturn).
+BDDMockito.given(backupConcurrency.lockAndStart(any())).willReturn(Mono.empty());
+// 행위를 할 때(when) 응답을 반환하라(thenReturn).
+BDDMockito.when(backupConcurrency.lockAndStart(any())).thenReturn(Mono.empty());
+// 행위가 수행되면 어떠한 동작을 해야 한다(should).
+BDDMockito.then(backupConcurrency).should(times(1)).lockAndStart(any());
+```
+
+어떤 방법을 사용할지는 테스팅 방법에 따라 구분하면 돼.
+만약 단위 테스트만으로 이뤄진다면 `Mockito`를 사용해도 되고, `BDD`를 활용한다면 `BDDMockito`를 사용하면 돼.
+
+### kotest
+
+`kotest`에서 모의 객체를 만드는 방법은 [kotest 문서](https://kotest.io/docs/framework/integrations/mocking.html)에 잘 정리되어 있어.
+
+`every`키워드를 사용해 행위를 모의하고 `verify`를 통해 모의된 행위를 검증 할 수 있어.
+
+```kotlin
+class MyTest : FunSpec({
+    val repository = mockk<MyRepository>()
+    val target = MyService(repository)
+    test("Saves to repository") {
+        every { repository.save(any()) } just Runs
+        target.save(MyDataClass("a"))
+        verify(exactly = 1) { repository.save(MyDataClass("a")) }
+    }
+})
+```
+
+> 이런 수행 방법만 봐도 알 수 있듯이 책에서 이야기한 모의를 검증하는 테스트 코드가 작성될 수 있다는 단점이 있어.
+> 우리가 해야 할 일은 의존성을 격리한 객체가 올바른 행위를 하는지 검증하는 거니 모의된 객체의 동작만을 검증하지 않도록 주의하자.
+
+## 통찰
+
+### 테스트 더블
+
+테스트 더블을 활용할 수 있으면 개발 프로세스 정하기가 자유로워져.
+테스트 더블을 사용하지 않았다면 실제 객체가 있어야 하니 도메인 레이어부터 개발 해야할거야.
+그런데 테스트 더블을 사용하면 외부에서부터 개발이 가능해. 필요한 객체들은 모의하면 되니까!
+
+![그림 1](/static/images/effective-software-testing-6/1.png)
+
+꼭 밖에서부터 개발하는게 장점인건 아니야.
+상황마다 장단점이 있으니 테스트 더블을 활용해 유연하게 개발하면 좋아보여.
+
+> 난 변경이 많지 않은 곳부터 먼저 구현 해.
+
+### 모의
+
+간혹 테스트가 행위가 아니라 코드를 검증하게 되는 경우가 종종 생겨.
+위에 예기했던 코드를 다시 가져와볼게.
+
+```kotlin
+class MyTest : FunSpec({
+    val repository = mockk<MyRepository>()
+    val target = MyService(repository)
+    test("Saves to repository") {
+        every { repository.save(any()) } just Runs
+        target.save(MyDataClass("a"))
+        verify(exactly = 1) { repository.save(MyDataClass("a")) }
+    }
+})
+```
+
+검증되는 행위는 `도메인 객체를 저장한다`야.
+어떤 도메인 객체가 입력으로 들어오면 어떤 결과가 반환되어야 함을 검증해야 하는데, 모의된 객체가 몇 번 호출되는지를 검증하고 있지.
+
+여기에서 문제는 내부 로직에 repo 를 mock 하면 행위를 검증하는 게 아니라 코드를 검증하는 게 되는 일이야.
+이런 부분들은 경계가 필요해.

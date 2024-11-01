@@ -1,0 +1,116 @@
+---
+title: 2월 2주 있었던 일 정리
+date: '2024-02-12'
+tags: ['회고', '헥사고날']
+draft: false
+summary:
+images: []
+---
+
+## Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+
+## 헥사고날 스터디 준비
+
+사내 스터디로 헥사고날을 학습하고 있다.
+이번 주는 유스케이스 로직을 추가해 [PR](https://github.com/Exagonal-Study/est-delivery/pull/4)을 올렸다.
+
+### capture 활용
+
+kotlin은 데이터를 변경하면 인스턴스가 교체되는 경우가 빈번하다. 그래서 비즈니스 로직에서 직접 핸들링 할 수 없는 객체들이 생겨난다.
+해당 로직에서 `Member`의 `useCoupon`을 사용한다면 사용자가 가진 쿠폰 리스트에서 해당 쿠폰을 제거한 새로운 인스턴스를 가지게 된다.
+
+```kotlin
+fun useCoupon(useCouponCommand: UseCouponCommand) {
+    val member = getMember(useCouponCommand.memberId)
+    member.useCoupon(coupon)
+    updateMemberStatePort.update(MemberState.from(member))
+}
+```
+
+`사용자가 가진 쿠폰 리스트를 확인하고 싶다면 어떻게 해야할까?`라는 고민을 하게 됐고, 찾아보니 캡처할 수 있는 방법이 있었다.
+
+```kotlin
+"쿠폰을 사용하면 쿠폰이 제거된다" {
+    // ...
+    every { updateMemberStatePort.update(capture(변경된_회원_상태)) } returns Unit
+    useCouponService.useCoupon(useCouponCommand)
+    // then
+    변경된_회원_상태.captured.toMember().showMyCouponBook() shouldNotContain 나눠준_비율_할인_쿠폰
+}
+```
+
+`capture`를 사용하면 `updateMemberStatePort.update`에 전달된 인자를 캡처할 수 있었다.
+꽤나 유용했다.
+
+### 집합의 대장을 찾기
+
+각 집합 요소마다 `root`가 되는 중심부를 찾아야 로직 작성 및 테스트 코드가 원활했다.
+가게 주인이 가게를 가지는 경우 가게 주인과 가게를 따로 조회하게 된다면 두 객체의 상태 관리를 동시에 진행해야 해서 복잡하다.
+특히나 테스트 코드 작성 때에 두 개의 연관성을 잘 연결해야 했다.
+
+```kotlin
+fun publishCoupon(publishCouponCommand: PublishCouponCommand) {
+    val shopOwner = getShopOwner(publishCouponCommand)
+    val shop = getShop(publishCouponCommand)
+    val publishedCoupon = createCoupon(publishCouponCommand)
+    shop.publishCouponInShop(publishedCoupon)
+    updateShopStatePort.update(ShopOState.from(shop))
+}
+```
+
+그래서 집합의 `root`를 찾아 `root` 부터 호출하게 된다면 내부 코드에서 연관성을 관리할 필요가 없어졌다.
+그래서 가게 주인을 중심으로 내부 도메인을 검사하도록 신경쓴 것처럼 유스케이스에서 `root`를 기준으로 데이터를 조회하거나 수정했다.
+
+### 유스케이스 경량화
+
+처음 구현 할 때는 유스케이스가 엄청 길었다. 많게는 20줄까지 작성되기도 했다.
+너무 많은 책임으로 테스트 작성이 어려워지자 문제가 있음을 파악했다.
+
+```kotlin
+fun useCoupon(useCouponCommand: UseCouponCommand) {
+    val member = getMember(useCouponCommand)
+    if (!loadCouponStatePort.exist(useCouponCommand.couponId)) {
+        throw IllegalArgumentException("존재하지 않는 쿠폰입니다.")
+    }
+    val coupon = getCoupon(useCouponCommand)
+    if (!member.coupons.contains(coupon)) {
+        throw IllegalArgumentException("사용자가 가진 쿠폰이 아닙니다.")
+    }
+    member.useCoupon(coupon)
+    updateMemberStatePort.update(MemberState.from(member))
+}
+```
+
+그래서 도메인 로직은 최대한 도메인으로 분리해 비즈니스는 비즈니스만 해결하도록 신경썼더니 유스케이스가 가벼워졌다.
+
+```kotlin
+fun useCoupon(useCouponCommand: UseCouponCommand) {
+    val member = getMember(useCouponCommand)
+    val coupon = getCoupon(useCouponCommand)
+    member.useCoupon(coupon)
+    updateMemberStatePort.update(MemberState.from(member))
+}
+```
+
+만들면서 배우는 클린 아키텍처 책에서는 풍부한 도메인 모델을 지향할지 빈약한 도메인 모델을 지향할지 결정할 필요가 있다고 한다.
+결국 도메인 로직이 유스케이스에 포함시킬지 여부를 결정해야 한다고 한다.
+
+책의 저자가 결론 짓지 않은 이유는 두 개의 장단점이 극명하기 때문이라 생각한다.
+개인적인 견해로 수정이 적고 작업할 양이 적다면 유스케이스에 도메인 모델을 관리해 한 곳에서 관리하는 것이 좋아 보인다.
+반대로 그렇지 않다면 도메인 모델을 분리해 유스케이스에서는 도메인 모델을 사용하는 것이 좋아 보인다.
+
+### 입력 검증
+
+책에 다음과 같은 문장이 있다.
+
+> 입력 유효성은 구문을 검증하는 일이고 비즈니스 규칙은 의미를 검증하는 일이다.
+
+`쉽게 표현하면 문장을 검증하는 건 다른 영역에서 하고 맥락을 검증하는 건 유스케이스에서 진행해야 한다`는 의미로 보인다.
+코드를 짜기전에 어디까지가 맥락인지 어디까지가 문장인지 잘 파악하면 쉽게 맥락을 제어 할 수 있어보인다.
+
+책을 읽으면서 프로젝트에 작성된 코드 또한 책에 적힌 글과 다르지 않았다.
+앞과 뒤 맥락에 맞춰 자연스럽게 문장을 이어나가는 일이다.
+책을 집필할 때는 어떻게 자연스러운 문장을 적을지, 탈고는 어떻게 진행하는지에 맞춰 코드 관리를 해봐야겠다.

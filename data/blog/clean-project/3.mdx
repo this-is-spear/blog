@@ -1,0 +1,84 @@
+---
+title: 코틀린 - 깔끔한 프로젝트 설정
+date: '2024-10-07'
+tags: ['클린 프로젝트', '코틀린']
+draft: false
+summary: 코틀린과 함께하는 그레이들 의존성 정리 및 테스트 의존성 정리
+images: []
+---
+
+### Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+### 코틀린을 사용한 dependency 정리
+
+코틀린을 이용할 때 다음처럼 깔끔하게 수정할 수 있다.
+
+**AS-IS**
+
+```kotlin
+
+dependencies {
+	implementation("org.jetbrains.kotlin:kotlin-reflect")
+	implementation("org.jetbrains.kotlin:stdlib-jdk8")
+	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+}
+
+```
+
+**TO-BE**
+
+```kotlin
+
+dependencies {
+    implementation(kotlin("reflect"))
+    implementation(kotlin("stdlib-jdk8"))
+    testImplementation(kotlin("test"))
+}
+```
+
+### 코틀린이 제공하는 코드로 junit 의존성을 제거한다.
+
+코틀린은 `kolint-test` 라이브러리를 요잉하면 `junit` 의존성을 제거할 수 있다.
+
+```kotlin
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class KotlinTest {
+    @BeforeTest
+    fun setUp() {
+        println("setUp")
+    }
+
+    @AfterTest
+    fun tearDown() {
+        println("tearDown")
+    }
+
+    @Test
+    fun name() {
+        assertEquals("hello", "hello")
+    }
+}
+
+```
+
+이게 가능한 이유가 `typealias` 를 이용해 별명을 지어줬기 때문이다.
+
+```kotlin
+@file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+@file:JvmPackageName("kotlin.test.junit5.annotations")
+package kotlin.test
+
+public actual typealias Test = org.junit.jupiter.api.Test
+public actual typealias Ignore = org.junit.jupiter.api.Disabled
+public actual typealias BeforeTest = org.junit.jupiter.api.BeforeEach
+public actual typealias AfterTest = org.junit.jupiter.api.AfterEach
+
+```
+
+`Assertions` 관련 함수는 `AssertionsKt__AssertionsKt`에 구현해뒀으며 우린 공통된 `Assertions`를 이용해 모든 함수를 동일한 의존성으로 공통화할 수 있다.

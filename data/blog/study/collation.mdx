@@ -1,0 +1,280 @@
+---
+title: mariadb collation 인한 이슈와 트러블 슈팅
+date: '2024-02-04'
+tags: ['개념', '정렬', '트러블 슈팅']
+draft: false
+summary: 트러블 슈팅 과 심층 분석
+images: []
+---
+
+## Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 문제
+
+### 이슈 내용
+
+마이그레이션 작업 배포 과정에서 다음과 같은 문제가 발생했고, 롤백이 진행됐다.
+
+```sql
+Illegal mix of collations (utf8mb4_unicode_ci,IMPLICIT)
+and (utf8mb4_general_ci,IMPLICIT) for operation '='
+```
+
+코드 수정이 없던 상황이라 문제 파악이 어려웠다.
+
+### 이슈 분석
+
+문제 상황을 간단하게 재현했다.
+
+```sql
+CREATE TABLE t2
+(
+    a VARCHAR(10) CHARACTER SET utf8mb4 collate utf8mb4_unicode_ci,
+    b VARCHAR(10) CHARACTER SET utf8mb4 collate utf8mb4_general_ci
+);
+
+INSERT INTO t2 VALUES ('a', 'b');
+show full columns from aplus_support.t2;
+
+SELECT CONCAT(a, b)
+FROM t2
+where a = b;
+```
+
+발생하는 문제를 확인 했을 때 유사한 문제로 확인할 수 있었다.
+
+```sql
+[HY000][1267] (conn=230295) Illegal mix of collations (utf8mb4_unicode_ci,IMPLICIT)
+ and (utf8mb4_general_ci,IMPLICIT) for operation '='
+```
+
+즉, `column`에  설정된 `collation`은 `utf8mb4_general_ci`이고, `connection`에 설정된 `collation`은 `utf8mb4_unicode_ci`이어서 비교할 수 있는 상황이었다.
+
+**하지만** 실제 설정된 `collation` 변수를 확인 했을 때 `utf8mb4_unicode_ci` 와 연관된 설정 값은 없었다. 설정된 변수는 다음과 같았다.
+
+- `connection collation`은 `utf8mb3_genenral_ci`
+- `database collation`은 `utf8mb4_general_ci`
+- `server collation`은 `latin1_swedish_ci`
+
+문제 원인을 분석하자면 두 가지다.
+
+- 비교 할 수 없어서 결과를 받아 올 수 없었다.
+- 설정된 값과 다른 `utf8mb4_unicode_ci` 값으로 `**connection collation**`이 설정되어 있다.
+
+## 원인
+
+### 1. 왜 설정 값과 다른 값으로 변경됐는지
+
+우선 `utf8mb4_unicode_ci` 값이 어떻게 전달되게 되는지 확인해보기로 했다. 데이터베이스 설정 값은 변경되지 않았지만, 마이그레이션 이후 발생하게 됐다. 그래서 mariadb client 를 먼저 확인했다.
+
+그럼 collation 설정 값을 변경하는 시점이 존재하게 됨을 추측해볼 수 있다. mariadb의 커넥션을 얻기 위해 핸드셰이크 과정을 거치는 모습을 먼저 확인했다. 핸드셰이크 과정에서 client의 character set과 collation을 전달하면 mariadb는 client에 맞는 커넥션 설정을 진행하게 된다. (해당 [링크](https://mariadb.com/kb/en/connection/#initial-handshake-packet)에서 확인 가능하다.)
+
+![images](/static/images/study/collation/1.png)
+
+변경된 원인은 `decideLanguage` 로 인한 `collation` 설정이 변경되는 문제였다.
+
+```java
+public static byte decideLanguage(InitialHandshakePacket handshake) {
+    short serverLanguage = handshake.getDefaultCollation();
+    // return current server utf8mb4 collation
+    return (byte)
+        ((serverLanguage == 45 // utf8mb4_general_ci
+                || serverLanguage == 46 // utf8mb4_bin
+                || (serverLanguage >= 224 && serverLanguage <= 247))
+            ? serverLanguage
+            : 224); // UTF8MB4_UNICODE_CI;
+  }
+```
+
+즉, `server character set`이 `latin1`(code 값이 5)로 설정되어 있어서 **connection collation**이 `utf8mb4_unicode_ci`로 설정되어 버린다.
+
+### 2. 왜 비교할 수 없는지
+
+원하는 값이 출력되지 않을 수 있기 때문이다. 값을 비교할 때 정렬 방법으로 동일한 문자인지를 확인하게 된다. 각 다른 character set 과 collate를 설정한 다음 동일한 데이터를 추가해보겠다.
+
+```sql
+CREATE TABLE german1(c CHAR(10)) CHARACTER SET latin1 COLLATE latin1_german1_ci;
+CREATE TABLE german2(c CHAR(10)) CHARACTER SET latin1 COLLATE latin1_german2_ci;
+CREATE TABLE germanutf8(c CHAR(10)) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+INSERT INTO german1 VALUES ('Bar'), ('Bär');
+INSERT INTO german2 VALUES ('Bar'), ('Bär');
+INSERT INTO germanutf8 VALUES ('Bar'), ('Bär');
+```
+
+그럼 비교돼서 조회되는 데이터는 다음처럼 모두 다르다. `a`와 `ä` 를 동일한 문자로 인식할지 여부처럼 언어의 규칙에 따라 어떻게 비교할지는 정렬 방법에 다라 결정된다.
+
+```sql
+SELECT * FROM german1 WHERE c = 'Bär';
+
+--- return ---
+
++------+
+| c    |
++------+
+| Bar  |
+| Bär  |
++------+
+
+SELECT * FROM german2 WHERE c = 'Bär';
+
+--- return ---
+
++------+
+| c    |
++------+
+| Bär  |
++------+
+
+SELECT * FROM germanutf8 WHERE c = 'Bär';
+
+--- return ---
+
++------+
+| c    |
++------+
+| Bar  |
+| Bär  |
++------+
+```
+
+그럼 `collation이 다르면 항상 에러가 발생하는가?`라고 하면 그건 또 아니다. mysql은 쿼리를 실행할 때 딱 하나의 collation만 사용하기 위해 결정하는 과정을 거친다. 이 때 어떤 collation을 사용할지 결정하기 위해 호환성을 파악하게 된다.
+
+> 어떤 순서로 결정을 하는지는 해당 [링크](https://dev.mysql.com/doc/refman/8.0/en/charset-collation-coercibility.html)에서 확인 할 수 있다.
+
+**우선 둘 다 유니코드이지만 collation이 다른 경우 오류가 발생하고,  둘 다 유니코드가 아닌 경우도 오류가 발생한다.**
+
+오류가 아닌 경우는 한쪽에 유니코드가 있을 때이다. 다른 한쪽의 character set을 유니코드로 변경한 다음 연산하기 시작한다. 아래 예시인 경우 `latin` 언어를 `utf8mb4`로 변경해서 `utf8mb4` 컬럼에 설정된 정렬 설정으로 결과가 반환되게 된다.
+
+```sql
+SELECT CONCAT(utf8mb4_column, latin1_column) FROM t1;
+```
+
+현재같은 케이스는 동일한 유니코드이지만 collation이 달라 발생하게 된다. `XXX_unicode_ci` 와 `XXX_general_ci` 문제가 아니라 동일한 유니코드에서 collation이 달라지게 되어서 발생하게 되는 문제인 것이다. `utf8mb4_swedish_ci`와 `utf8mb4_general_ci`를 비교하는 경우도 문제가 발생한다.
+
+```sql
+[HY000][1267] (conn=5) Illegal mix of collations
+(utf8mb4_swedish_ci,IMPLICIT) and (utf8mb4_general_ci,IMPLICIT)
+for operation '='
+```
+
+## 결론
+
+문제가 발생하게 된 계기는 mariadb client가 connection의 collation을 강제 변경한 게 원인이었고, mysql/mariadb는 column과 connection의 character set은 같지만 collation이 달라 오류를 던졌다.
+
+해결책은 다음 정도가 생각나는데, database의 server collation 설정을 변경할 계획이다. 첫 번째 방법으로 임시적으로 해결 할 수 있지만 server collation 을 우리가 원하는 xxx_general_ci 로 default_collation으로 지정해야 고민한 괴리감이 없어지리라 생각한다.
+
+- connection collation 설정 값 지정
+- database의 server collation 설정
+- mariadb client 버전 변경
+
+그 밖에 collation으로 소소한 성능 상승 효과를 누릴 수 있어보여서 collation 과 관련된 이야기를 추가로 해보려 한다.
+
+## 심층 분석
+
+이번 기회에 collation에 대해 자세하게 몰랐는데 이번에 정리해보려 한다.
+간단하게 character set과 `utf8`에 대해서 정리해본다음 collation에 대해 이야기 해보겠다.
+
+### character set 중 utf8에 대해서
+
+바이트 코드로 문자를 표현하기 위해서는 규칙이 필요하고, 일련의 규칙을 character set 이라 한다.
+`latin` 이라는 규칙도 있지만 전세계의 모든 언어를 담을 수는 없었다.
+그래서 다국어 규칙을 만족 할 수 있는 `utf-8`이 필요하게 됐다.
+`latin`은 1 바이트로 언어를 표현하지만 `utf-8`은 1~4 바이트를 사용해 문자를 표현하게 된다.
+
+> 만약 사용하는 언어가 `latin` 으로만 표현할 수 있다면 I/O를 효율적으로 사용 할 수 있을테다.
+
+`1 바이트라면 컴퓨터는 비트를 8개씩 쪼개 인식 할 수 있을 텐데, 1에서 4까지 변화되는 글자를 어떻게 읽을 수 있을까?`라는 고민을 할 수 있다.
+
+그건 바이트 길이를 기준으로 `prefix`를 설정해 얼마만큼이 한 글자인지를 확인하게 된다.
+예를 들면 1 바이트 글자라면 앞의 비트가 `01`, 2 바이트면 앞의 비트가 `01`, 3 바이트면 `10`, 4 바이트면 `11`로 표현 할 수 있다.
+계속 이야기 하면 하도 끝도 없으니 character set에 관심이 많다면 해당 [책](https://m.yes24.com/Goods/Detail/89906094)을 읽어보길 바란다.
+
+사소한 거지만 mariadb에서 이야기하는 `utf8`은 `utf8mb3`이다.
+실제 위에 얘기했던 `utf8`이랑 다른 점은 3 바이트만 사용해서 `utf8`과 호환되지 않는다는 점이다.
+그래서 우리가 아는 `utf8`은 mariadb에서 `utf8mb4`라고 보면 된다.
+
+### collation이란
+
+문자열을 정렬하기 위한 규칙이다.
+일반적으로 바이트의 크기에 따라 정렬되게 되는데, 국가마다 언어를 어떻게 정렬하고 싶은지 고민할 수 있다.
+예를들면 대소문자를 구분하고 싶지 않는 등의 행위를 하고 싶다면 정렬 규칙을 수정해야 한다.
+
+언어에 특성에 따라 정렬 순서 규칙을 결정하고 싶을 수도 있다.
+mysql에서 Muffler, Müller, MX Systems, MySQL 라는 데이터를 추가하게 되면 다음과 같은 정렬 순서를 가지게 된다.
+즉, collate마다 정렬되는 순서가 결정되게 된다.
+
+| latin1_swedish_ci | latin1_german1_ci | latin1_german2_ci |
+| --- | --- | --- |
+| Muffler | Muffler | Müller |
+| MX Systems | Müller | Muffler |
+| Müller | MX Systems | MX Systems |
+| MySQL | MySQL | MySQL |
+
+특별한 규칙을 주고 싶을 수도 있다.
+대소문자를 구분하고 싶지 않는 등의 행위를 하고 싶다면 정렬 규칙을 수정해야 한다.
+mysql에서 데이터 정렬 규칙에 다음과 같은 접미사를 추가해 어떻게 정렬할지 설정할 수 있다.
+
+| 접미사 | 의미 |
+| --- | --- |
+| _ai | 악센트를 구분하지 않음 |
+| _as | 악센트 구분 |
+| _ci | 대소문자를 구분하지 않음 |
+| _cs | 대소문자 구분 |
+| _ks | 가나 구분 |
+| _bin | 바이너리 |
+
+### unicode-4.0.0([링크](https://www.unicode.org/versions/Unicode4.0.0)), unicode-9.0.0([링크](https://www.unicode.org/versions/Unicode9.0.0/)) and unicode-14.0.0([링크](https://www.unicode.org/versions/Unicode14.0.0/))
+
+바이트 크기를 기준으로 이진 탐색으로 한다면 쉽게 구현 할 수 있겠지만 세상은 그렇게 호락호락하지 않다.
+그래서 대소문자를 구분하지 않는 등의 케이스는 모든 문자의 순서를 지정해서 사용하게 된다.
+키의 순서가 저장된 [문서](https://www.unicode.org/Public/UCA/4.0.0/allkeys-4.0.0.txt)를 공유하겠다.
+
+> mariadb는 10.10.1버전부터 `unicode-14.0.0`을 제공하며 문자열 비교 성능을 높이기 위해 신경쓰고 있다.([링크](https://jira.mariadb.org/browse/MDEV-27009))
+
+### general_ci가 빠르다는데 속도 차이가 체감이 될까?
+
+해당 [글](https://dev.mysql.com/doc/refman/8.0/en/charset-unicode-sets.html)에서 `unicode_ci` 가 더 많이 여러 규칙까지 보완해주다 보니 느리다고 한다.
+어떤 차이가 있는지 천천히 설명해보겠다.
+
+이진 정렬 방법을 제외한 모든 정렬 방법은 문자는 각각 가중치를 가지고 가중치에 맞게 비교하게 된다.
+가중치는 `WEIGHT_STRING` 함수로 확인 가능하다.
+
+```sql
+SELECT HEX(WEIGHT_STRING('a' collate utf8mb4_unicode_ci));
+SELECT HEX(WEIGHT_STRING('A' collate utf8mb4_unicode_ci));
+
+---return---
+
++-------+
+| ....  |
++-------+
+| 0E33  |
++-------+
+```
+
+`general_ci`와 같은 일반적인 정렬 방식은 코드 값이 곧 가중치이지만, `unicode_ci` 는 UCA 방법을 사용하기에 다음 알고리즘이 적용된다.
+
+```sql
+if (code >= 0x3400 && code <= 0x4DB5)
+  base= 0xFB80; /* CJK Ideograph Extension */
+else if (code >= 0x4E00 && code <= 0x9FA5)
+  base= 0xFB40; /* CJK Ideograph */
+else
+  base= 0xFBC0; /* All other characters */
+
+# base와 code로 값 연산
+aaaa = base +  (code >> 15);
+bbbb = (code & 0x7FFF) | 0x8000;
+```
+
+즉, `unicode_ci` 약간의 규칙이 추가되어 문자를 비교할 때마다 위 조건문을 사용하기 때문에 성능이 조금 떨어진다는 점이다.
+속도 차이는 크게 없어보인다.
+하지만, 만약 위 규칙이 필요하지 않다면 비효율적이다.
+
+## 심층 분석 결론
+
+collation 중 `unicode_ci` 와 `general_ci`를 비교하는 시간을 가졌다.
+mysql 문서는 `unicode_ci` 가 정확하지만 조금 느리다 했는데, 문자 정렬 과정에서 추가 규칙을 가지고 있기 때문이었다.
+추가 규칙이 필요하지 않다면 `general_ci` 를 사용하는게 효율적이라고 판단 할 수 있었다.

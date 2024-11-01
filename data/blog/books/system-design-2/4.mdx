@@ -1,0 +1,283 @@
+---
+title: 4. 분산 메시지 큐
+date: '2024-04-21'
+tags: ['책', '대규모 시스템 설계 기초 2']
+draft: false
+summary: 메시지 큐 원리를 알아보자.
+images: []
+---
+
+책은 대규모 시스템에서 가용 할 수 있는 분신 메시지 시스템 아키텍처를 다루고 있다. 그에 맞게 정리해보겠다.
+
+## 개요
+
+### 메시지 큐를 도입하려는 이유
+
+현대 아키텍처는 서비스 블록 경계를 인터페이스로 나누고 있다. 메시지 큐는 블록 사이 통신과 조율을 담당한다.
+분산 메시지를 적용할 때 이점은 다음과 같다.
+
+- 결합도 완화
+- 규모 확장성 개선
+- 가용성 개선
+- 성능 개선
+
+### 의도한 동작을 잘 해내기 위해선
+
+큐 동작 외에도 성능, 메시지 전달 방식, 데이터 보관 기간 등 고려할 사항은 다양하다.
+그 중 데이터 장기 보관(long data retention) 기능과 메시지 반복 소비(repeated consumption message) 기능을 가진 분산 메시지 큐를 설계해보자.
+
+## 개략적 설계안
+
+메시지 큐는 큐 동작에 충실하다. 메시지를 큐에 담고 소비자가 앞에있는 메시지부터 소비한다.
+
+![그림 1](/static/images/books/system-design-2/four/1.png)
+
+
+메시지 큐는 두 가지 메시지 모델로 나뉜다. 일대일 모델과 발행 구독 모델이다. 일대일 모델은 메시지는 한 소비자만 가져갈 수 있는 방식이고 발행-구독 모델은 해당 토픽(채널)을 구독하는 소비자들에게 메시지를 전달하는 방법이다.
+
+
+|일대일 방식|구독 방식|
+|---|---|
+|![그림 2](/static/images/books/system-design-2/four/2.png)|![그림 3](/static/images/books/system-design-2/four/3.png)|
+
+메시지 큐에서 제공하는 발행-구독 모델과 Redis 등에서 제공하는 발행-구독 모델은 다르다. `redis pub/sub 모델`과 `event streamiong pub/sub 모델`의 궁극적인 차이는 공유 자원의 유무이다.
+
+
+**Redis pub/sub 모델**
+
+`redis pub/sub 모델`은 다음처럼 메시지를 생산하자마자 전달한다. 만약 구독자가 메시지를 받기는 했지만, 처리 도중 에러가 발생하거나 처리 능력을 초과한다면 메시지가 유실되기도 한다.
+
+```java
+class Channel {
+    String name;
+    Set<Subscriber> subscribers = new HashSet<>();
+
+    Channel(String name) {
+        this.name = name;
+    }
+
+    void subscribe(Subscriber subscriber) {
+        subscribers.add(subscriber);
+    }
+
+    void publish(String message) {
+        for (Subscriber subscriber : subscribers) {
+            subscriber.receiveMessage(name, message);
+        }
+    }
+}
+```
+
+**Event streaming pub/sub 모델**
+
+그러나 `event streaming pub/sub 모델`은 다르다. 큐의 `FIFO`라는 특징은 무조건 데이터를 전달받을 수 있다는 특징을 보장한다.
+
+```java
+class Channel {
+    String name;
+    BlockingQueue<String> messageQueue;
+    List<Subscriber> subscribers = new ArrayList<>();
+
+    Channel(String name, int queueSize) {
+        this.name = name;
+        this.messageQueue = new ArrayBlockingQueue<>(queueSize);
+    }
+
+    void subscribe(Subscriber subscriber) {
+        subscribers.add(subscriber);
+    }
+
+    void publish(String message) {
+        try {
+            messageQueue.put(message);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    void consume() {
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.execute(() -> {
+            while (true) {
+                try {
+                    String message = messageQueue.take();
+                    for (Subscriber subscriber : subscribers) {
+                        subscriber.receiveMessage(name, message);
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+}
+```
+
+**동작 비교**
+
+main 메서드를 구현했을 때, consume 하기 전 데이터를 가져오는 방식이 달랐다.
+
+```java
+public class PubSub {
+    public static void main(String[] args) {
+        Channel channel1 = new Channel("channel1", 10);
+
+        Subscriber sub1 = new Subscriber("sub1");
+        Subscriber sub2 = new Subscriber("sub2");
+
+        channel1.subscribe(sub1);
+        channel1.subscribe(sub2);
+
+				// Redis Pub/Sub 클래스에서는 유실되지만 Queue Pub/Sub 은 유실되지 않는다.
+        channel1.publish("Hello World! 1");
+
+        channel1.consume();
+
+				// Redis Pub/Sub, Queue Pub/Sub 둘 다 출력된다.
+        channel1.publish("Hello World! 2");
+    }
+}
+```
+
+`BlockingQueue`를 사용하는 일에서 알 수 있듯이 공유 자원에서 여러 작업이 동시에 발생하면 문제가 발생한다. 운영 체제에서 멀티스레딩 방식 관련해 `생산자-소비자 문제`가 있다. 이 문제는 아래 `pull 모델`에서 설명해보겠다.
+
+**토픽, 브로커, 파티션**
+
+메시지 큐 시스템은 토픽, 파티션, 브로커 등으로 메시지를 분산 저장 및 전송한다. 말 그대로 하나의 토픽이 있고, 토픽에는 한 개 이상의 브로커가 소비자들에게 메시지를 중개한다.
+
+> 브로커 이름 참 잘지었다.
+
+대충 동작은 이런 느낌이다.
+
+![그림 4](/static/images/books/system-design-2/four/4.png)
+
+여기에서 만약 브로커가 죽었거나 파티션 데이터가 일부 유실되거나 소비자 그룹이 변경된다면 브로커는 소비자 재조정을 시작한다. 관련 내용은 아래 소비자 재조정에서 진행하겠다.
+
+**소비자 그룹**
+
+소비자 그룹이 언급 됐는데 소비자 그룹은 하나의 토픽에서 메시지를 소비하기 위해 협력하는 소비자 모임이라고 생각하면 된다. 하나의 소비자 그룹은 여러 토픽을 구독하고 각 토픽마다 오프셋을 관리해 중복 문제를 해결한다.
+
+> 즉, 협력하게 되면서 병렬로 소비할 수 있다는 장점이 있다.
+
+병렬로 읽으면 처리 대역폭을 늘릴 수 있어서 좋다. 병렬 처리할 때 주의할 점은 파티션 당 하나의 소비자가 맡아 소비 순서를 보장할 수 있어야 한다.
+
+> **파티션은 가장 적은 저장 단위이므로 충분한 파티션 수를 할당하고 필요에 따라 소비자를 추가하는 방식으로 구성해야 한다.**
+
+소비자 그룹 내에서 파티션 마다 하나의 소비자가 맡도록 조정하는 친구를 코디네이터라고 하는데, 소비자 재조정 파트에서 다시 이야기 해보겠다.
+
+## 상세 설계안
+
+### 데이터 저장
+가장 먼저 데이터를 지속적으로 저장 및 전달을 할 수 있을지 생각해볼 필요가 있다. 읽기 및 쓰기가 많고 갱신이 없으며 순차적인 작업인 특성을 이용해 큐 자료구조를 이용 할 수 있다.
+
+**데이터 저장소**
+
+그 중 `write-ahead log` 방식을 채택하면 문제를 해결 할 수 있다.
+어려울 것 없다. 메시지가 추가될 때 추가되는 로그를 파일에 `append` 하는게 전부다.
+`append` 된 데이터를 세그먼트 단위로 묶고 완성된 건 읽기만 가능하게 설정해 읽어나간다.
+순차적으로 쌓여 있으니 오래된 것부터 차근차근 지워나가면 된다.
+
+![그림 5](/static/images/books/system-design-2/four/5.png)
+
+> 순차적인 읽기-쓰기 처리를 활용할 때 회전 디스크를 사용해 성능과 비용 이점을 가져 갈 수 있다.
+> 현대 디스크 기반 자료 구조인 RAID 방식을 채택하면 높은 성능도 가져갈 수 있다.
+
+**메시지 자료 구조**
+
+메시지 구조를 통해 높은 대역폭을 달성할 수 있다.
+소비자에게 거쳐가는 동안 불필요하고 비싼 복사가 일어나지 않게 하는게 중요하다.
+
+> 책에서 복사가 값비싸다고 하는 이유가 메시지 주소를 찾는 행위 때문이라고 생각한다.
+
+메시지 자료 구조에 추가되는 값은 다음과 같다.
+
+- 메시지 키 : 파티션에 메시지가 균등 분포될 수 있도록 설정되는 값.
+- 오프셋 : 파티션 내 메시지의 위치
+- CRC : 순환 중복 검사 값이며 데이터 무결성을 보장한다.
+
+> 사실 메시지 구조랑 복사랑은 어떤 상관관계가 있는지 모르겠다.
+
+### 대역폭 vs 지연
+
+생산자와 소비자는 메시지를 일괄처리하며 처리에 대한 높은 대역폭을 가진다.
+그럼 한 번에 많이 데이터를 읽으면 되니까 디스크 접근 횟수도 줄어든다.
+또한 네트워크 왕복 비용도 줄어든다. 장점이 있는 반면 처리에 대한 지연시간이 높아져 즉각적으로 반응하기 어려워진다.
+
+**생산자 측 작업 흐름**
+
+간단하게 설명하자면 다음과 같다.
+
+1. 생산자가 메시지를 생성하면 라우팅 계층을 통해 적절한 브로커를 찾아 메시지를 보낸다.
+2. 적절한 브로커는 해당 토픽에 대한 파티션 중 리더에게 보낸다.
+3. 리더 파티션은 다음 파티션에도 전달한다.
+4. 동기화되면 데이터를 디스크에 기록(commit)한다.
+
+![그림 6](/static/images/books/system-design-2/four/6.png)
+
+이런 과정을 거칠 때 세 가지에 집중한다.
+
+- 장애 감내 : 리더와 사본을 만든다.
+- 성능 최적화 : 생산자에서 버퍼를 만들고 라우팅 계층을 통해 일괄 처리한다.
+
+생산자 입장에서 일괄 처리는 데이터를 얼만큼 모았다가 디스크에 저장하는지다.
+일괄 처리 대역폭이 높을 수록 I/O 횟수가 줄겠지만 응답 지연속도가 늘어나니 신경써야 한다.
+
+**소비자 측 작업 흐름**
+
+각 소비자는 파티션마다 오프셋을 기록해 해당 위치부터 이벤트 단위로 묶어 데이터를 가져온다.
+즉, 소비자는 큐에서 메시지를 묶어 일괄 조회한다.
+
+![그림 7](/static/images/books/system-design-2/four/7.png)
+
+> 위에서 이야기 했듯이 소비자 그룹 내 소비자마다 하나의 파티션을 맡게 되고 각각 오프셋을 가지게 된다.
+
+
+### 푸시 vs 풀
+
+가장 중요한 건 소비자가 데이터를 어떻게 받을지를 결정해야 한다는 점이다.
+데이터를 받는 방법은 두 가지다.
+
+- 푸시
+- 풀
+
+**푸시**
+
+- 장점
+    - 낮은 지연 응답
+- 단점
+    - 부하 가능성
+    - 생산자에 의존되는 소비자 컴퓨팅 자원
+
+> 푸시는 메시지 받는 즉시 소비자에게 전달하는 모델이다.
+> 지연은 낮지만 소비자 처리 속도가 느릴 경우 문제가 생길 수 있다.
+
+**풀**
+
+- 장점
+    - 소비자의 컴퓨팅 자원이 생산자에 의존하지 않아도 된다.
+    - 메시지 소비 속도가 느리면 소비자만 늘리거나 생산 속도를 따라잡을 때까지 기다린다.
+    - 일괄 처리에 적합하다.
+- 단점
+    - 브로커에 메시지를 계속 가져가려 시도하다보니 소비자측 컴퓨팅 자원이 낭비된다.
+
+> 현대는 풀의 단점을 롱 폴링 방식으로 해결하면서 사용하고 있다.
+
+**생산자 소비자 문제**
+
+멀티 스레딩 환경 운영체제에서는 공유 자원인 버퍼에 생산자와 소비자가 접근하면서 발생하는 경합을 이야기한다.
+공유 자원인 큐를 이용하는 분산 메시지 큐와 동일한 환경이라 생각이 들었다.
+
+![그림 8](/static/images/books/system-design-2/four/8.png)
+
+운영체제는 여러 개의 생산자와 소비자를 관리하기 위해 임계영역을 구성하지만 분산 메세지 시스템은 하나 소비자당 하나의 파티션을 맡게 해 동시성 이슈를 어느정도 해결했다.
+(그래도 메세지 순서를 보장하기 위해서는 코디네이터에서 조절해준다.)
+
+![그림 9](/static/images/books/system-design-2/four/9.png)
+
+읽는 과정은 유사하다. 운영체제는 읽기 전에 기다리다 신호를 받으면 접근하는데, 분산 메시지 큐는 롱 폴링 형식으로 접근한다.
+
+![그림 10](/static/images/books/system-design-2/four/10.png)
+
+큐에 담는 과정도 유사하지 않을까 예상한다.
+
+![그림 11](/static/images/books/system-design-2/four/11.png)
