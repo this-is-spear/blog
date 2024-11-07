@@ -149,7 +149,7 @@ fun consumeTransactionRequest() {
 
 오히려 병목 현상 해결에 도움되는 방식이었다. 커넥션이 늘기 이전에 평균 응답 시간이 요동치는 순간에 커넥션을 늘려 안정적인 상태 유지가 가능했다.
 
-![이미지](/static/images/books/concurrency-7/148.png)
+![이미지](/static/images/books/concurrency-7/149.png)
 
 `Redisson`으로 구현된 `Redis streams`를 사용했는데 특정 상황마다 커넥션을 늘리는 건지 신기했다. 요청이 줄어드니 기본 커넥션 수로 돌아가는 모습까지 확인했다.
 
