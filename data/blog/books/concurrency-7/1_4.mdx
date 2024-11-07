@@ -1,0 +1,164 @@
+---
+title: Redis streams 에 대한 개인적인 정리
+date: '2024-11-07'
+tags: ['동시성', '생산자 소비자 패턴', '레디스']
+draft: false
+summary: 생산자 소비자 패턴을 활용을 위한 Redis streams 테스트
+images: []
+---
+
+### Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+### 개요
+
+분산락에서 개선 포인트와 대안점을 찾기 위해 생산자 소비자 패턴 적용 방법을 고민하고 있었고, Redis streams를 활용해보려 한다.
+생산자 소비자 패턴을 고민한 이유는 다음에 정리되어 있다.
+
+- [동시성과 병렬성](https://tis-blog.vercel.app/blog/books/concurrency-7/0)
+- [비결정적 특징에 대한 개인적인 정리](https://tis-blog.vercel.app/blog/books/concurrency-7/1_1)
+- [ReentrantLock에 대한 개인적인 정리](https://tis-blog.vercel.app/blog/books/concurrency-7/1_2)
+- [생산자 소비자 패턴에 대한 개인적인 정리](https://tis-blog.vercel.app/blog/books/concurrency-7/1_3)
+
+분산락 문제를 요약하자면 다음과 같다.
+
+- 임계 영역에서 외부 메서드를 호출하면 데드락 위험이 존재한다.
+- 대기하는 순간부터 순차 처리를 보장하지 않게 된다. 공정성 옵션은 스레드 간 공평하게 락 획득 기회를 주는 일이지 순차처리 한다는 의미가 아니다.
+
+생산자 소비자 패턴을 요약하자면 다음과 같다.
+
+- 큐를 사용해 작업의 순차 처리를 보장하고 소비자를 제어해 비결정성을 해소한다. 즉, 동시성을 제어하고 병렬성을 높일 수 있다.
+
+### Redis streams
+
+`Redis streams`는 메시지를 연결 리스트로 관리하고 소비자가 메시지를 소비할 때까지 보관하는 방식이다.
+
+생산자는 다음처럼 메시지를 담는다.
+
+```kotlin
+fun produceTransactionRequest(
+    message: PointTransactionMessage
+): String {
+    // Map<String, String> 형태로 변환
+    val messageData: Map<String, String> = extractMessageData(message)
+    // RedissonClient를 통해 STREAM 이름을 가진 Redis Stream 접근
+    val stream: RStream<String, String> = redissonClient.getStream(STREAM)
+    // messageData를 Stream에 추가
+    stream.add(StreamAddArgs.entries(messageData))
+}
+```
+
+소비자는 다음처럼 메시지를 읽는다. 필자는 전송되지 않은 메시지중 하나씩 받도록 설정했다.
+이름은 `GROUP`, 소비자 이름은 `CONSUMER`로 설정했으며 그룹에 속한 소비자 간 메시지를 하나씩 전달받아 처리한다.
+처리가 완료되면 `ACK`를 전송해 메시지를 삭제한다.
+
+레디스 관련 정보 글은 아니니 추가 설명은 진행하지 않겠다.
+
+```kotlin
+
+fun consumeTransactionRequest() {
+    // RedissonClient를 통해 STREAM 이름을 가진 Redis Stream 접근
+    val stream: RStream<String, String> = redissonClient.getStream(STREAM)
+    // 생성할 방식을 인자로 담는다.
+    val streamReadGroupArgs = StreamReadGroupArgs.neverDelivered().count(1)
+    val message = stream.readGroup(GROUP, CONSUMER, streamReadGroupArgs).entries
+        .stream()
+        .findFirst()
+        .orElse(null)
+
+    if (message != null) {
+        val pointTransactionMessage =
+            objectMapper.readValue(message.value["result"], PointTransactionMessage::class.java)
+        val sourceAccount = pointTransactionMessage.sourceAccount
+        val targetAccount = pointTransactionMessage.targetAccount
+        val amount = pointTransactionMessage.amount
+        transactionService.transaction(sourceAccount, targetAccount, amount)
+        // 메시지 처리 완료 시 ACK 전송한다.
+        stream.ack(GROUP, message.key)
+    }
+}
+```
+
+이렇게 설정하고 테스트를 진행하니 의도하지 않은 문제가 발생했다.
+
+### 병목 현상 발생 가능성
+
+요청이 일정량 유지되는 시점에 갑자기 평균 응답 시간이 증가했다.
+
+![이미지](/static/images/books/concurrency-7/141.png)
+
+이해할 수 없었다. 측정되는 곳은 생산자가 레디스에 데이터를 담기까지다.
+
+![이미지](/static/images/books/concurrency-7/145.png)
+
+병목현상이 발생하는지 파악하기 위해 현재 상황을 분석했다.
+
+### 문제 분석
+
+그 시점에 레디스에서는 커넥션 수가 늘고 처리량이 잠깐 감소한 모습을 확인했다.
+
+1. 커넥션이 늘었다.
+2. 처리량이 감소했다.
+
+![이미지](/static/images/books/concurrency-7/142.png)
+
+이 때 애플리케이션에서는 스레드 수가 증가했다. 그 중 time-wait 상태의 커넥션이 증가했다.
+
+1. wait 상태 스레드가 줄었다.
+2. time-wait 상태 스레드가 증가했다.
+
+![이미지](/static/images/books/concurrency-7/143.png)
+
+레디스에서 가장 호출이 많이 됐다면 영향이 많이 가는 명령어라 생각해서 함께 확인했다.
+
+1. XREADGROUP 가장 많이 호출됐으며 총 실행 시간은 5.2초다.
+2. XREADGROUP 호출 중 가장 오래 걸린 시간은 12.2ms다.
+
+![이미지](/static/images/books/concurrency-7/144.png)
+
+응답 시간이 감소하는 문제를 유추하면 다음과 같은 문제 중 하나라 생각했다.
+
+1. 커넥션이 증가하는 순간 처리량이 감소한다.
+2. XREADGROUP 처럼 소비하는 로직이 생산 로직에 영향을 준다.
+3. time-wait 상태가 늘며 레디스에 데이터를 적재하려는 요청이 많아진다.
+
+### 원인
+
+여기까지 추합해보면 둘 중 하나가 원인이라 생각했다.
+
+- 레디스에 요청을 보내기 위해 time-wait로 대기하는 스레드가 많아졌다. 그래서 레디스는 커넥션이 늘렸고 그 상황에서 처리량이 감소됐다.
+- 레디스는 작업자가 한 명이다. 한 명의 작업자가 생산과 소비를 같이하고 있는데 소비 작업에 부하가 많아서 생산 작업이 늦어지고 있다.
+
+쉽게 알아보는 방법이 있다. 소비를 안하면 생산 작업만 확인이 가능하다.
+
+### 해결
+
+결과를 먼저 이야기하자면 소비 작업으로 인해 생산 작업이 늦어지고 있었다.
+다음 그림에서 병목 현상이 해결된 모습 확인 가능하다.
+
+![이미지](/static/images/books/concurrency-7/146.png)
+
+이 때 커넥션 수가 늘어나면서 time-wait 상태 스레드가 증가한 모습 확인도 가능했고 병목 현상에 결정적인 영향을 주지 않았다.
+
+![이미지](/static/images/books/concurrency-7/147.png)
+
+처리량도 마찬가지다. 클라이언트 수가 늘어나면서 처리량이 일시적으로 감소했지만 병목 현상에 결정적인 증가는 아니다.
+
+![이미지](/static/images/books/concurrency-7/148.png)
+
+오히려 병목 현상 해결에 도움되는 방식이었다. 커넥션이 늘기 이전에 평균 응답 시간이 요동치는 순간에 커넥션을 늘려 안정적인 상태 유지가 가능했다.
+
+![이미지](/static/images/books/concurrency-7/148.png)
+
+`Redisson`으로 구현된 `Redis streams`를 사용했는데 특정 상황마다 커넥션을 늘리는 건지 신기했다. 요청이 줄어드니 기본 커넥션 수로 돌아가는 모습까지 확인했다.
+
+![이미지](/static/images/books/concurrency-7/150.png)
+
+### 결과
+
+분산락의 한계를 보완하기 위해 생산자 소비자 패턴 적용을 고려하게 됐는데 인프라까지 손대며 복잡도를 높이고 싶지 않았다.
+그래서 `Redis streams`를 고려했지만 단일 작업자로 동작하기 때문에 소비 작업이 생산 작업에 영향이 가며 생산자 소비자 패턴에 적용하기에는 부적하다는 것을 알게 됐다.
+
+다른 방식을 강구하거나 그럼에도 분산락보다 좋다면 차용해볼 생각이다.
+확장성을 고려해서 설계한다면 다른 streams 기술을 빠르게 채택 가능하다고 믿는다.
