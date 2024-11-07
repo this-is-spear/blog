@@ -53,8 +53,6 @@ fun produceTransactionRequest(
 이름은 `GROUP`, 소비자 이름은 `CONSUMER`로 설정했으며 그룹에 속한 소비자 간 메시지를 하나씩 전달받아 처리한다.
 처리가 완료되면 `ACK`를 전송해 메시지를 삭제한다.
 
-레디스 관련 정보 글은 아니니 추가 설명은 진행하지 않겠다.
-
 ```kotlin
 
 fun consumeTransactionRequest() {
