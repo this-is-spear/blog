@@ -67,11 +67,13 @@ images: []
 producer-consumer 방식에서 mvc 라이브러리를 사용한다면 요청에 따라 대기하는 스레드 수와 레디스 커넥션 수가 늘어난다.
 반면 webflux 라이브러리를 사용한다면 대기하는 스레드 수와 레디스 커넥션 수를 줄이고 효율적으로 자원을 분배할 수 있다.
 
-| 라이브러리      | mvc                                                | webflux                                            |
-|------------|----------------------------------------------------|----------------------------------------------------|
-| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/153.png) | ![이미지](/static/images/books/concurrency-7/154.png) |
-| 레디스 커넥션 상태 | ![이미지](/static/images/books/concurrency-7/151.png) | ![이미지](/static/images/books/concurrency-7/155.png) |
-| JVM 스레드 상태 | ![이미지](/static/images/books/concurrency-7/152.png) | ![이미지](/static/images/books/concurrency-7/156.png) |
+| mvc                                                                                 | webflux                                            |
+|-------------------------------------------------------------------------------------|----------------------------------------------------|
+| <img src="/static/images/books/concurrency-7/153.png" alt="drawing" width="445px"/> | ![이미지](/static/images/books/concurrency-7/154.png) |
+| ![이미지](/static/images/books/concurrency-7/151.png)                                  | ![이미지](/static/images/books/concurrency-7/155.png) |
+| ![이미지](/static/images/books/concurrency-7/152.png)                                  | ![이미지](/static/images/books/concurrency-7/156.png) |
+
+
 
 요약하면 다음과 같다.
 
@@ -94,10 +96,10 @@ producer-consumer 방식에서 mvc 라이브러리를 사용한다면 요청에 
 publisher-subscriber 는 응답 채널 구성 방식에 성능 차이가 발생한다. 각 요청마다 pub-sub 채널을 운영하면 채널 연결할 커넥션을 열고 닫는 작업을 해야 한다.
 반면 모든 요청을 동일한 채널을 사용하면 커넥션 수는 유지되지만 모든 subscriber 에게 메시지를 전달해야 한다.
 
-| 라이브러리      | 하나의 커넥션 만 생성                                       | 요청당 커넥션 생성                                         |
-|------------|----------------------------------------------------|----------------------------------------------------|
-| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/157.png) | ![이미지](/static/images/books/concurrency-7/159.png) |
-| 레디스 커넥션 상태 | ![이미지](/static/images/books/concurrency-7/158.png) | ![이미지](/static/images/books/concurrency-7/160.png) |
+| 하나의 커넥션 만 생성                                       | 요청당 커넥션 생성                                         |
+|----------------------------------------------------|----------------------------------------------------|
+| ![이미지](/static/images/books/concurrency-7/157.png) | ![이미지](/static/images/books/concurrency-7/159.png) |
+| ![이미지](/static/images/books/concurrency-7/158.png) | ![이미지](/static/images/books/concurrency-7/160.png) |
 
 요약하면 다음과 같다.
 
@@ -108,9 +110,9 @@ publisher-subscriber 는 응답 채널 구성 방식에 성능 차이가 발생�
 
 그럼 레디스 분산락과 해당 방식을 불특정 다수 거래자로 작업 처리했을 때 다음과 같은 차이를 확인했다.
 
-| 라이브러리      | Redisson Lock                                      | Redis streams + Redis pub/sub                      |
-|------------|----------------------------------------------------|----------------------------------------------------|
-| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/167.png) | ![이미지](/static/images/books/concurrency-7/168.png) |
+| Redisson Lock                                      | Redis streams + Redis pub/sub                      |
+|----------------------------------------------------|----------------------------------------------------|
+| ![이미지](/static/images/books/concurrency-7/167.png) | ![이미지](/static/images/books/concurrency-7/168.png) |
 
 - 평균 응답 시간이 `0.40s` -> `0.55s`로 늘었다.
 - 최대 응답 시간이 `3.6s` -> `7.6s`로 늘었다.
@@ -121,10 +123,10 @@ publisher-subscriber 는 응답 채널 구성 방식에 성능 차이가 발생�
 그럼 특정 거래자 작업이 집중되면 어떤 현상이 발생하는지 파악했다. 작업은 간단하다. (발급처 -> B), (B -> C), (C -> 사용쳐) 순으로 거래를 진행한다.
 그럼 발생할 문제는 B와 C의 잔액 계산시 데이터 누적으로 레이턴시 증가하는 현상과 특정 데이터 접근에 대한 경쟁이 치열하다.
 
-| 라이브러리      | Redisson Lock                                      | Redis streams + Redis pub/sub                      |
-|------------|----------------------------------------------------|----------------------------------------------------|
-| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/163.png) | ![이미지](/static/images/books/concurrency-7/165.png) |
-| 히스토그램 및 지표 | ![이미지](/static/images/books/concurrency-7/164.png) | ![이미지](/static/images/books/concurrency-7/166.png) |
+| Redisson Lock                                      | Redis streams + Redis pub/sub                      |
+|----------------------------------------------------|----------------------------------------------------|
+| ![이미지](/static/images/books/concurrency-7/163.png) | ![이미지](/static/images/books/concurrency-7/165.png) |
+| ![이미지](/static/images/books/concurrency-7/164.png) | ![이미지](/static/images/books/concurrency-7/166.png) |
 
 - 평균 응답 시간이 `7.83s` -> `3.18s`로 줄었다.
 - 실패 건수가 258에서 0 건으로 줄었다.
@@ -142,9 +144,7 @@ rabbitmq 에서 제공하는 direct-reply-to 기능을 사용해 소비한 결�
 
 > Spring amqp 버전 2.0 이전에는 각 요청에 대해 새 소비자를 생성하고 응답이 수신되거나 시간이 초과되면 소비자를 취소했지만, `DirectReplyToMessageListenerContainer`를
 > 사용하여 소비자를 재사용할 수 있다.
-> 응답을 전달하는 일은 달라지지 않지만 답장이 다른 발신자에게 전송될 위험이 없다는게 특징이다.
->
-> AsyncRabbitTemplate 은 답장하는 경우 선택 옵션 없이 DirectReplyToContainer 사용한다.
+> 응답을 전달하는 일은 달라지지 않지만 답장이 다른 발신자에게 전송될 위험이 없다는게 특징이다.AsyncRabbitTemplate 은 답장하는 경우 선택 옵션 없이 DirectReplyToContainer 사용한다.
 
 전체 동작은 다음과 같다.
 
@@ -157,10 +157,10 @@ rabbitmq 에서 제공하는 direct-reply-to 기능을 사용해 소비한 결�
 
 문서에서 Async 로직을 제공했다. 전송하고 반환 받는 경우 CompletableFuture 를 사용해 블록킹되는 상황을 줄일 수 있었다.
 
-|            | Sync Rabbit Template                               | Async Rabbit Template                              |
-|------------|----------------------------------------------------|----------------------------------------------------|
-| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/169.png) | ![이미지](/static/images/books/concurrency-7/171.png) |
-| 히스토그램 및 지표 | ![이미지](/static/images/books/concurrency-7/170.png) | ![이미지](/static/images/books/concurrency-7/172.png) |
+| Sync Rabbit Template                               | Async Rabbit Template                              |
+|----------------------------------------------------|----------------------------------------------------|
+| ![이미지](/static/images/books/concurrency-7/169.png) | ![이미지](/static/images/books/concurrency-7/171.png) |
+| ![이미지](/static/images/books/concurrency-7/170.png) | ![이미지](/static/images/books/concurrency-7/172.png) |
 
 요약하면 다음 결과가 발생했다.
 
@@ -169,9 +169,9 @@ rabbitmq 에서 제공하는 direct-reply-to 기능을 사용해 소비한 결�
 
 그럼 레디스 분산락과 해당 방식을 불특정 다수 거래자로 작업 처리했을 때 다음과 같은 차이를 확인했다.
 
-| 라이브러리    | Redisson Lock                                      | Rabbitmq direct-reply-to                           |
-|----------|----------------------------------------------------|----------------------------------------------------|
-| 전체 성능 지표 | ![이미지](/static/images/books/concurrency-7/167.png) | ![이미지](/static/images/books/concurrency-7/173.png) |
+| Redisson Lock                                      | Rabbitmq direct-reply-to                           |
+|----------------------------------------------------|----------------------------------------------------|
+| ![이미지](/static/images/books/concurrency-7/167.png) | ![이미지](/static/images/books/concurrency-7/173.png) |
 
 - 평균 응답 시간이 `0.40s` -> `2.33s`로 늘었다.
 - 최대 응답 시간이 `3.6s` -> `5.93s`로 늘었다.
@@ -181,10 +181,10 @@ rabbitmq 에서 제공하는 direct-reply-to 기능을 사용해 소비한 결�
 그럼 특정 거래자 작업이 집중되면 어떤 현상이 발생하는지 파악해보겠다.
 작업은 마찬가지다. (발급처 -> B), (B -> C), (C -> 사용쳐) 순으로 거래를 진행한다.
 
-| 라이브러리      | Redisson Lock                                      | Rabbitmq direct-reply-to                           |
-|------------|----------------------------------------------------|----------------------------------------------------|
-| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/163.png) | ![이미지](/static/images/books/concurrency-7/174.png) |
-| 히스토그램 및 지표 | ![이미지](/static/images/books/concurrency-7/164.png) | ![이미지](/static/images/books/concurrency-7/175.png) |
+| Redisson Lock                                      | Rabbitmq direct-reply-to                           |
+|----------------------------------------------------|----------------------------------------------------|
+| ![이미지](/static/images/books/concurrency-7/163.png) | ![이미지](/static/images/books/concurrency-7/174.png) |
+| ![이미지](/static/images/books/concurrency-7/164.png) | ![이미지](/static/images/books/concurrency-7/175.png) |
 
 
 - 평균 응답 시간이 `7.83s` -> `8.57s`로 줄었다.
@@ -200,12 +200,12 @@ Rabbitmq request-reply 패턴에서 응답을 제공할 때 사용하는 채널 
 구현하면서 다음과 같은 장단점도 발견했다.
 
 - 변경 후 장점
-    - 특정 데이터에 경쟁이 많아져도 일정한 레이턴시를 유지한다.
-    - 외부 메서드 호출 위험이 사라진다.
+- 특정 데이터에 경쟁이 많아져도 일정한 레이턴시를 유지한다.
+- 외부 메서드 호출 위험이 사라진다.
 - 변경 후 단점
-    - 특정 데이터 경쟁이 없는 시점에는 분산락이 월등하게 빠르다.
-    - 분산락 구현은 동시성 제어가 특정 계좌 두 개에 국한되지만 메시지 브로커 사용 이후 모든 요청이 순차 처리되어 레이턴시가 증가한다.
-    - 분산락이 아닌 경우 동시성 제어 영역을 좁히기 위해서는 두 개 계좌에 한정해서 순차 처리를 보장하면 되는데 구현이 어렵다.
+- 특정 데이터 경쟁이 없는 시점에는 분산락이 월등하게 빠르다.
+- 분산락 구현은 동시성 제어가 특정 계좌 두 개에 국한되지만 메시지 브로커 사용 이후 모든 요청이 순차 처리되어 레이턴시가 증가한다.
+- 분산락이 아닌 경우 동시성 제어 영역을 좁히기 위해서는 두 개 계좌에 한정해서 순차 처리를 보장하면 되는데 구현이 어렵다.
 
 메시지 브로커를 사용하면 다음과 같은 이슈가 고려할 수 있었다.
 메시지 생산 시점에서 발생하는 에러는 클라이언트에 전파할 수 있지만 소비하는 시점에 발생하는 에러나 중간 통신하는 부분에서 발생하는 에러는 어떻게 처리할지 고민 해볼 필요가 있다.
