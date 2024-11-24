@@ -1,0 +1,353 @@
+---
+title: Redisson Lock, Redis Streams, RabbitMQ 에 대한 개인적인 정리
+date: '2024-11-25'
+tags: ['동시성', '생산자 소비자 패턴', '레디스', '래빗엠큐']
+draft: false
+summary: request-reply 패턴을 활용한 동시성 제어 방법에 대한 정리
+images: []
+---
+
+## 상황
+
+동시성을 제어하기 위해 `Redisson Lock`을 활용해 분산락을 구현했다.
+그러나 분산락을 사용하면 두 가지 문제점이 존재한다.
+
+1. 요청 순서를 보장하지 않는다.
+2. 외부 메서드를 호출해 데드락 가능성이 존재한다.
+
+해당 문제를 해결하기 위해 `Redis Streams`, `RabbitMQ direct-Reply-To`를 사용해보려 한다.
+
+## 문제
+
+### 요청 순서를 보장하기 어려운 문제
+
+`Redisson Lock`은 잠금을 획득하기 위해 대기한다. 이 때, 잠금 해제 신호를 받으려는 Subscriber 형태로 대기하게 되며 잠금 해제 신호를 받으면 잠금 획득을 시도하기 위한 경쟁이 시작된다.
+다음은 두 개 작업이 동일한 잠금을 시도할 때 발생하는 상황이다.
+
+```mermaid
+sequenceDiagram
+    box Application Area
+    participant Thread1
+    participant Thread2
+    end
+
+    box Redis Area
+    participant RLock
+    participant RedissonLock
+    participant Redis
+    participant PubSub
+    end
+
+    rect rgb(200, 130, 155)
+    Note over Thread1,PubSub: Phase 1: 첫 번째 스레드 락 획득 시도 및 획득
+    Thread1->>RLock: tryLock()
+    RLock->>RedissonLock: lockAsync()
+    RedissonLock ->> Redis : tryAcquire(EVAL)
+    Redis -->> RedissonLock : success
+    RedissonLock-->>RLock:
+    RLock-->>Thread1: acquire lock
+    end
+
+    rect rgb(255, 130, 100)
+    Note over Thread1,PubSub: Phase 2: 두 번째 스레드 락 획득 시도 및 대기
+    Thread2->>RLock: tryLock()
+    RLock->>RedissonLock: lockAsync()
+    RedissonLock ->> Redis : tryAcquire(EVAL)
+    Redis -->> RedissonLock : fail
+    RedissonLock->>+PubSub: subscribe with timeout
+    end
+    Note over PubSub: 타임 아웃 만큼 대기
+
+    rect rgb(230, 155, 100)
+    Note over Thread1,PubSub: Phase 3: 첫 번째 스레드 락 해제 및 해제 신호 전파
+    Thread1->>RLock: unlock()
+    RLock->>RedissonLock: unlockAsync()
+    RedissonLock ->> Redis : unlockInnerAsync(EVAL)
+    Redis -->> RedissonLock : success
+    RedissonLock->>PubSub: publish(unlock)
+    PubSub -->> RedissonLock:
+    RedissonLock-->>RLock:
+    RLock-->>Thread1: release lock
+    end
+
+    rect rgb(255, 100, 130)
+    Note over Thread1,PubSub: Phase 4: 두 번째 스레드 락 해제 신호 전달 및 락 획득 시도
+    PubSub-->>-RedissonLock: notify
+    RedissonLock ->> Redis : tryAcquire(EVAL)
+    Redis -->> RedissonLock : success
+    RedissonLock-->>RLock:
+    RLock-->>Thread2: acquire lock
+    end
+```
+
+### 외부 메서드를 호출해 데드락 가능성이 존재
+
+문제를 해결하는 방법 중 제일 쉬운 방법은 문제를 예방하는 방법이다. 잠금 장치 획득 후 외부 메서드를 호출하는 순간 제어권을 잃게 되며 데드락 발생 가능성이 존재한다.
+잠금 장치를 필요 이상으로 유지하면 동기화도 인한 성능 저하와 데드락의 원인이 된다.
+
+## 원인
+
+두 가지 고민점으로 접근했다.
+
+- 잠금 획득 대기를 시간 순으로 획득할 수 있도록 하면 되지 않을까?
+- 작업을 순차적으로 처리하면 잠금 장치 내에서 외부 메서드 호출을 걱정하지 않아도 된다.
+
+첫 번째는 RedissonFairLock 을 적용하면 되지 않을까 생각들 수 있지만 RedissonFairLock 은 스레드 간 공정하게 락을 잡는 방법이지 작업의 순차성을 보장하지 않는다.
+또한 RedissonLock 구현체를 사용하면 외부 메서드 호출 위험 해결 할 수 없다.
+
+그래서 외부 메서드 호출 위험을 해결하기 위해 동시성 제어를 작업의 순서를 보장하는 일에만 적용하는 방법으로 구성했다.
+구성하는 방법은 Redis streams, RabbitMQ direct-reply-to 를 사용했다.
+
+## 해결
+
+### redis streams 사용
+`RedissonLock`은 Lock 메커니즘으로 동시성을 제어하고 `publisher-subscriber` 패턴을 사용해 잠금 해제 신호를 알린다.
+`request-reply` 패턴은 `producer-consumer` 패턴으로 동시성을 제어하고 `publisher-subscriber` 패턴을 사용해 응답을 전달한다.
+구현 방법은 다음과 같다.
+
+- `producer-consumer`, `publisher-subscriber` 활용한 request-reply 패턴 적용한다.
+- `producer-consumer`로는 redis streams, `publisher-subscriber`로는 redis pub/sub 사용한다.
+
+
+전체 동작은 다음과 같다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor user
+box rgb(100,134,134) producer
+participant controller
+participant request-service
+participant subscriber
+participant producer
+end
+
+box rgb(100,134,134) consumer
+participant response-service
+participant consumer
+participant repository
+participant publisher
+end
+
+participant redis
+
+user ->> controller: request
+controller ->> request-service: start transaction
+activate request-service
+request-service ->> subscriber: await
+subscriber ->> redis: subscribe
+request-service ->> producer: send message
+producer ->> redis: produce
+redis -->> producer:
+producer -->> request-service:
+
+response-service ->> consumer: start consume
+consumer ->> redis: get transaction
+redis -->> consumer:
+consumer -->> response-service :
+response-service  ->> repository: save transaction
+repository -->> response-service:
+response-service ->> consumer: end consume
+consumer ->> redis: ack
+redis -->> consumer:
+consumer -->> response-service:
+response-service ->> publisher: singal
+publisher ->> redis: publish
+redis -->> publisher:
+publisher -->> response-service:
+
+redis -->> subscriber: receive response
+subscriber -->> request-service: signal
+request-service -->> controller: end transaction
+deactivate request-service
+controller -->> user: 200OK
+```
+
+해당 방식은 아래 두 가지로 성능 차이가 발생한다.
+
+- producer-consumer 관리 방법에 따른 성능 차이
+- publisher-subscriber 관리 방법에 따른 성능 차이
+
+producer-consumer 방식에서 mvc 라이브러리를 사용한다면 요청에 따라 대기하는 스레드 수와 레디스 커넥션 수가 늘어난다.
+반면 webflux 라이브러리를 사용한다면 대기하는 스레드 수와 레디스 커넥션 수를 줄이고 효율적으로 자원을 분배할 수 있다.
+
+| 라이브러리      | mvc                                                | webflux                                            |
+|------------|----------------------------------------------------|----------------------------------------------------|
+| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/153.png) | ![이미지](/static/images/books/concurrency-7/154.png) |
+| 레디스 커넥션 상태 | ![이미지](/static/images/books/concurrency-7/151.png) | ![이미지](/static/images/books/concurrency-7/155.png) |
+| JVM 스레드 상태 | ![이미지](/static/images/books/concurrency-7/152.png) | ![이미지](/static/images/books/concurrency-7/156.png) |
+
+요약하면 다음과 같다.
+
+- 레디스 커넥션 수를 71 -> 30 줄였다.
+- JVM time-waiting 스레드 수를 200 -> 10줄였다.
+- 평균 응답 시간이 `5.28ms` -> `1.55ms`로 줄었다.
+- 최대 응답 시간이 `268s` -> `62ms`로 줄었다.
+
+또한 consumer 에서 작업하는 양에 따라 성능 차이가 발생한다. consumer 가 처리하는 작업 수가 1 개와 300 개인 경우 비교했다.
+
+| 처리하는 작업 수 1 설정                                     | 처리하는 작업 수 300 설정                                   |
+|----------------------------------------------------|----------------------------------------------------|
+| ![이미지](/static/images/books/concurrency-7/161.png) | ![이미지](/static/images/books/concurrency-7/162.png) |
+
+요약하면 다음 결과가 발생했다.
+
+- 평균 응답 시간이 `7.87s` -> `0.55s`로 줄었다.
+- 최대 응답 시간이 `10.7s` -> `7.60s`로 줄었다.
+
+publisher-subscriber 는 응답 채널 구성 방식에 성능 차이가 발생한다. 각 요청마다 pub-sub 채널을 운영하면 채널 연결할 커넥션을 열고 닫는 작업을 해야 한다.
+반면 모든 요청을 동일한 채널을 사용하면 커넥션 수는 유지되지만 모든 subscriber 에게 메시지를 전달해야 한다.
+
+| 라이브러리      | 하나의 커넥션 만 생성                                       | 요청당 커넥션 생성                                         |
+|------------|----------------------------------------------------|----------------------------------------------------|
+| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/157.png) | ![이미지](/static/images/books/concurrency-7/159.png) |
+| 레디스 커넥션 상태 | ![이미지](/static/images/books/concurrency-7/158.png) | ![이미지](/static/images/books/concurrency-7/160.png) |
+
+요약하면 다음과 같다.
+
+- 레디스 커넥션 수 중 pub/sub 수가 1 -> 35 개로 늘었다.
+- 레디스 커넥션 수 중 pub/sub 커넥션이 아닌 커넥션 수가 60 -> 34 개로 줄었다.
+- 평균 응답 시간이 `7.49s` -> `0.55s`로 줄었다.
+- 최대 응답 시간이 `20.1s` -> `7.6s`로 줄었다.
+
+그럼 레디스 분산락과 해당 방식을 불특정 다수 거래자로 작업 처리했을 때 다음과 같은 차이를 확인했다.
+
+| 라이브러리      | Redisson Lock                                      | Redis streams + Redis pub/sub                      |
+|------------|----------------------------------------------------|----------------------------------------------------|
+| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/167.png) | ![이미지](/static/images/books/concurrency-7/168.png) |
+
+- 평균 응답 시간이 `0.40s` -> `0.55s`로 늘었다.
+- 최대 응답 시간이 `3.6s` -> `7.6s`로 늘었다.
+
+예상과는 다르게 성능이 더 떨어진 모습을 확인했다. 차이나는 이유는 Redis streams + Redis pub/sub 방식은 모든 요청에 순차 처리를 진행하고 있어 병렬 처리를 수행할 수 없기 때문이다.
+반면 분산락은 동시성 제어 영역을 좁혀 연관 없다면 병렬 처리를 수행하고 있다.
+
+그럼 특정 거래자 작업이 집중되면 어떤 현상이 발생하는지 파악했다. 작업은 간단하다. (발급처 -> B), (B -> C), (C -> 사용쳐) 순으로 거래를 진행한다.
+그럼 발생할 문제는 B와 C의 잔액 계산시 데이터 누적으로 레이턴시 증가하는 현상과 특정 데이터 접근에 대한 경쟁이 치열하다.
+
+| 라이브러리      | Redisson Lock                                      | Redis streams + Redis pub/sub                      |
+|------------|----------------------------------------------------|----------------------------------------------------|
+| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/163.png) | ![이미지](/static/images/books/concurrency-7/165.png) |
+| 히스토그램 및 지표 | ![이미지](/static/images/books/concurrency-7/164.png) | ![이미지](/static/images/books/concurrency-7/166.png) |
+
+- 평균 응답 시간이 `7.83s` -> `3.18s`로 줄었다.
+- 실패 건수가 258에서 0 건으로 줄었다.
+
+Redisson Lock 은 동시성 제어 영역을 좁혀 레이턴시를 줄이는 방법이라 특정 데이터 경쟁에 취약했다.
+반면 Redis streams 는 모든 요청 순차 처리만 진행하기 때문에 특정 데이터 경쟁에 취약하지 않았다.
+
+### rabbitmq direct-reply-to 사용
+
+rabbitmq 에서 제공하는 direct-reply-to 기능을 사용해 소비한 결과를 생산자에게 전달해 사용자에게 결과를 전파했다.
+문서는 다음 문서 참고했다.
+
+- [spring amqp request-reply](https://docs.spring.io/spring-amqp/reference/amqp/request-reply.html)
+- [direct-reply-to](https://www.rabbitmq.com/direct-reply-to.html)
+
+> Spring amqp 버전 2.0 이전에는 각 요청에 대해 새 소비자를 생성하고 응답이 수신되거나 시간이 초과되면 소비자를 취소했지만, `DirectReplyToMessageListenerContainer`를
+> 사용하여 소비자를 재사용할 수 있다.
+> 응답을 전달하는 일은 달라지지 않지만 답장이 다른 발신자에게 전송될 위험이 없다는게 특징이다.
+>
+> AsyncRabbitTemplate 은 답장하는 경우 선택 옵션 없이 DirectReplyToContainer 사용한다.
+
+전체 동작은 다음과 같다.
+
+```mermaid
+
+sequenceDiagram
+    autonumber
+    actor user
+box rgb(100,134,134) producer
+participant controller
+participant send-reply-service
+end
+
+participant rabbitmq
+
+box rgb(100,134,134) consumer
+participant receive-request-service
+participant repository
+end
+
+user ->> controller: request
+controller ->> send-reply-service: start transaction
+send-reply-service ->> rabbitmq: send
+rabbitmq -->> receive-request-service:
+receive-request-service ->> repository: save transaction
+repository ->> receive-request-service:
+receive-request-service ->> rabbitmq: receive
+rabbitmq -->> send-reply-service:
+
+send-reply-service ->> controller: end transaction
+controller -->> user: 200OK
+```
+
+해당 방식은 다음처럼 성능 차이가 발생한다.
+
+- Sync Rabbit Template vs Async Rabbit Template 따른 성능 차이
+- Channel 수에 따른 성능차이
+
+문서에서 Async 로직을 제공했다. 전송하고 반환 받는 경우 CompletableFuture 를 사용해 블록킹되는 상황을 줄일 수 있었다.
+
+|            | Sync Rabbit Template                               | Async Rabbit Template                              |
+|------------|----------------------------------------------------|----------------------------------------------------|
+| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/169.png) | ![이미지](/static/images/books/concurrency-7/171.png) |
+| 히스토그램 및 지표 | ![이미지](/static/images/books/concurrency-7/170.png) | ![이미지](/static/images/books/concurrency-7/172.png) |
+
+요약하면 다음 결과가 발생했다.
+
+- 평균 응답 시간이 `2.37s` -> `2.33s`로 줄었다.
+- 최대 응답 시간이 `9.16s` -> `5.93s`로 줄었다.
+
+그럼 레디스 분산락과 해당 방식을 불특정 다수 거래자로 작업 처리했을 때 다음과 같은 차이를 확인했다.
+
+| 라이브러리    | Redisson Lock                                      | Rabbitmq direct-reply-to                           |
+|----------|----------------------------------------------------|----------------------------------------------------|
+| 전체 성능 지표 | ![이미지](/static/images/books/concurrency-7/167.png) | ![이미지](/static/images/books/concurrency-7/173.png) |
+
+- 평균 응답 시간이 `0.40s` -> `2.33s`로 늘었다.
+- 최대 응답 시간이 `3.6s` -> `5.93s`로 늘었다.
+
+해당 방식도 마찬가지로 모든 요청에 순차 처리를 진행하고 있어 병렬 처리를 수행할 수 없기 때문에 분산락 성능을 따라갈 수 없다.
+
+그럼 특정 거래자 작업이 집중되면 어떤 현상이 발생하는지 파악해보겠다.
+작업은 마찬가지다. (발급처 -> B), (B -> C), (C -> 사용쳐) 순으로 거래를 진행한다.
+
+| 라이브러리      | Redisson Lock                                      | Rabbitmq direct-reply-to                           |
+|------------|----------------------------------------------------|----------------------------------------------------|
+| 전체 성능 지표   | ![이미지](/static/images/books/concurrency-7/163.png) | ![이미지](/static/images/books/concurrency-7/174.png) |
+| 히스토그램 및 지표 | ![이미지](/static/images/books/concurrency-7/164.png) | ![이미지](/static/images/books/concurrency-7/176.png) |
+
+
+- 평균 응답 시간이 `7.83s` -> `8.57s`로 줄었다.
+- 실패 건수가 258에서 4 건으로 줄었다.
+
+성능 향상이 높다고는 못하지만 실패 건수는 줄었다.
+Rabbitmq request-reply 패턴에서 응답을 제공할 때 사용하는 채널 수가 200으로 한정되는 문제로 메시지 양이 일정 범위 넘어서면서 병목 현상이 발생한다.
+채널 수를 제어하면 성능 상에서 일정 수준이상 높일 수 있어보인다.
+
+## 결론
+
+이것저것 시도해봤지만 큰 결실이 없는 결과를 만들었다. 결국 동시성 제어는 동시성 영역을 좁혀 병렬처리를 높이는데 주안점을 둬야하고 그렇지 못한 경우는 시스템 성능에 좌우함을 경험했다.
+구현하면서 다음과 같은 장단점도 발견했다.
+
+- 변경 후 장점
+    - 특정 데이터에 경쟁이 많아져도 일정한 레이턴시를 유지한다.
+    - 외부 메서드 호출 위험이 사라진다.
+- 변경 후 단점
+    - 특정 데이터 경쟁이 없는 시점에는 분산락이 월등하게 빠르다.
+    - 분산락 구현은 동시성 제어가 특정 계좌 두 개에 국한되지만 메시지 브로커 사용 이후 모든 요청이 순차 처리되어 레이턴시가 증가한다.
+    - 분산락이 아닌 경우 동시성 제어 영역을 좁히기 위해서는 두 개 계좌에 한정해서 순차 처리를 보장하면 되는데 구현이 어렵다.
+
+메시지 브로커를 사용하면 다음과 같은 이슈가 고려할 수 있었다.
+메시지 생산 시점에서 발생하는 에러는 클라이언트에 전파할 수 있지만 소비하는 시점에 발생하는 에러나 중간 통신하는 부분에서 발생하는 에러는 어떻게 처리할지 고민 해볼 필요가 있다.
+
+- 메시지 전송되지 않은 경우
+- 메시지는 전송됐지만 처리되지 못한 경우
+- 메시지는 처리됐지만 응답이 전달되지 못한 경우
+- 메시지는 처리됐지만 응답 대기 시간을 넘어선 경우
+
+> 응답이 전달되지 않은 방식과 마찬가지로 해당 요청이 정상적으로 처리됐는지 확인하거나 이전 요청을 롤백하는 방식을 강구해야 한다.
+
+
+
