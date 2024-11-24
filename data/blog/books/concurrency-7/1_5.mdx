@@ -24,61 +24,7 @@ images: []
 `Redisson Lock`은 잠금을 획득하기 위해 대기한다. 이 때, 잠금 해제 신호를 받으려는 Subscriber 형태로 대기하게 되며 잠금 해제 신호를 받으면 잠금 획득을 시도하기 위한 경쟁이 시작된다.
 다음은 두 개 작업이 동일한 잠금을 시도할 때 발생하는 상황이다.
 
-```mermaid
-sequenceDiagram
-    box Application Area
-    participant Thread1
-    participant Thread2
-    end
-
-    box Redis Area
-    participant RLock
-    participant RedissonLock
-    participant Redis
-    participant PubSub
-    end
-
-    rect rgb(200, 130, 155)
-    Note over Thread1,PubSub: Phase 1: 첫 번째 스레드 락 획득 시도 및 획득
-    Thread1->>RLock: tryLock()
-    RLock->>RedissonLock: lockAsync()
-    RedissonLock ->> Redis : tryAcquire(EVAL)
-    Redis -->> RedissonLock : success
-    RedissonLock-->>RLock:
-    RLock-->>Thread1: acquire lock
-    end
-
-    rect rgb(255, 130, 100)
-    Note over Thread1,PubSub: Phase 2: 두 번째 스레드 락 획득 시도 및 대기
-    Thread2->>RLock: tryLock()
-    RLock->>RedissonLock: lockAsync()
-    RedissonLock ->> Redis : tryAcquire(EVAL)
-    Redis -->> RedissonLock : fail
-    RedissonLock->>+PubSub: subscribe with timeout
-    end
-    Note over PubSub: 타임 아웃 만큼 대기
-
-    rect rgb(230, 155, 100)
-    Note over Thread1,PubSub: Phase 3: 첫 번째 스레드 락 해제 및 해제 신호 전파
-    Thread1->>RLock: unlock()
-    RLock->>RedissonLock: unlockAsync()
-    RedissonLock ->> Redis : unlockInnerAsync(EVAL)
-    Redis -->> RedissonLock : success
-    RedissonLock->>PubSub: publish(unlock)
-    PubSub -->> RedissonLock:
-    RedissonLock-->>RLock:
-    RLock-->>Thread1: release lock
-    end
-
-    rect rgb(255, 100, 130)
-    Note over Thread1,PubSub: Phase 4: 두 번째 스레드 락 해제 신호 전달 및 락 획득 시도
-    PubSub-->>-RedissonLock: notify
-    RedissonLock ->> Redis : tryAcquire(EVAL)
-    Redis -->> RedissonLock : success
-    RedissonLock-->>RLock:
-    RLock-->>Thread2: acquire lock
-    end
-```
+![이미지](/static/images/books/concurrency-7/178.png)
 
 ### 외부 메서드를 호출해 데드락 가능성이 존재
 
@@ -111,57 +57,7 @@ sequenceDiagram
 
 전체 동작은 다음과 같다.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor user
-box rgb(100,134,134) producer
-participant controller
-participant request-service
-participant subscriber
-participant producer
-end
-
-box rgb(100,134,134) consumer
-participant response-service
-participant consumer
-participant repository
-participant publisher
-end
-
-participant redis
-
-user ->> controller: request
-controller ->> request-service: start transaction
-activate request-service
-request-service ->> subscriber: await
-subscriber ->> redis: subscribe
-request-service ->> producer: send message
-producer ->> redis: produce
-redis -->> producer:
-producer -->> request-service:
-
-response-service ->> consumer: start consume
-consumer ->> redis: get transaction
-redis -->> consumer:
-consumer -->> response-service :
-response-service  ->> repository: save transaction
-repository -->> response-service:
-response-service ->> consumer: end consume
-consumer ->> redis: ack
-redis -->> consumer:
-consumer -->> response-service:
-response-service ->> publisher: singal
-publisher ->> redis: publish
-redis -->> publisher:
-publisher -->> response-service:
-
-redis -->> subscriber: receive response
-subscriber -->> request-service: signal
-request-service -->> controller: end transaction
-deactivate request-service
-controller -->> user: 200OK
-```
+![이미지](/static/images/books/concurrency-7/179.png)
 
 해당 방식은 아래 두 가지로 성능 차이가 발생한다.
 
@@ -252,35 +148,7 @@ rabbitmq 에서 제공하는 direct-reply-to 기능을 사용해 소비한 결�
 
 전체 동작은 다음과 같다.
 
-```mermaid
-
-sequenceDiagram
-    autonumber
-    actor user
-box rgb(100,134,134) producer
-participant controller
-participant send-reply-service
-end
-
-participant rabbitmq
-
-box rgb(100,134,134) consumer
-participant receive-request-service
-participant repository
-end
-
-user ->> controller: request
-controller ->> send-reply-service: start transaction
-send-reply-service ->> rabbitmq: send
-rabbitmq -->> receive-request-service:
-receive-request-service ->> repository: save transaction
-repository ->> receive-request-service:
-receive-request-service ->> rabbitmq: receive
-rabbitmq -->> send-reply-service:
-
-send-reply-service ->> controller: end transaction
-controller -->> user: 200OK
-```
+![이미지](/static/images/books/concurrency-7/180.png)
 
 해당 방식은 다음처럼 성능 차이가 발생한다.
 
