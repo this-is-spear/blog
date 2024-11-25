@@ -30,6 +30,8 @@ images: []
 
 ![이미지](/static/images/books/concurrency-7/178.png)
 
+두 개 작업만 비교했을 때 큰 체감은 안나지만 경쟁이 치열할 수록 잠금 순서는 보장하지 않는다.
+
 ### 외부 메서드를 호출해 데드락 가능성이 존재
 
 문제를 해결하는 방법 중 제일 쉬운 방법은 문제를 예방하는 방법이다. 잠금 장치 획득 후 외부 메서드를 호출하는 순간 제어권을 잃게 되며 데드락 발생 가능성이 존재한다.
@@ -200,6 +202,48 @@ Rabbitmq request-reply 패턴에서 응답을 제공할 때 사용하는 채널 
 
 ## 결론
 
+### 생각과는 다른 결과
+
+잠금 순서가 보장되지 않아서 이슈가 발생해야 하는데 발생하지 않았다. 원인 파악해보니 `Redisson Lock` 사용시 인스턴스 하나만 운영하면 순서를 보장하기 때문이다.
+`Redisson Lock`은 치열한 경쟁을 막기 위해 세마포어를 활용해 순차적으로 구독하도록 구현한다.
+
+```java
+private CompletableFuture<PubSubConnectionEntry> subscribe(PubSubType type, Codec codec, ChannelName channelName,
+                                                           MasterSlaveEntry entry, ClientConnectionsEntry clientEntry,
+                                                           RedisPubSubListener<?>... listeners) {
+    CompletableFuture<PubSubConnectionEntry> promise = new CompletableFuture<>();
+    AsyncSemaphore lock = getSemaphore(channelName);
+    //...
+    lock.acquire().thenAccept(r -> {
+        //...
+    });
+    return promise;
+}
+```
+
+일반 적인 세마포어는 락을 획득하기 위해 그 시점에서 대기하지만 `AsyncSemaphore`는 락을 사용하는 시점에 대기한다.
+이 때 대기하는 작업은 `listeners`라는 `Queue`에 대기하며 자신 차례가 올때까지 대기한다.
+
+```java
+public final class AsyncSemaphore {
+    private final Queue<CompletableFuture<Void>> listeners = new ConcurrentLinkedQueue<>();
+    //...
+
+    public CompletableFuture<Void> acquire() {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        listeners.add(future);
+        tryForkAndRun();
+        return future;
+    }
+    //...
+}
+```
+
+순서가 보장되지 않음을 파악하기 위해서는 멀티 인스턴스로 가용해야 한다.
+멀티 인스턴스로 확인하지 않아 의도한 결과가 나오지 않았다.
+
+### 변경 후 장단점 고민
+
 이것저것 시도해봤지만 큰 결실이 없는 결과를 만들었다. 결국 동시성 제어는 동시성 영역을 좁혀 병렬처리를 높이는데 주안점을 둬야하고 그렇지 못한 경우는 시스템 성능에 좌우함을 경험했다.
 구현하면서 다음과 같은 장단점도 발견했다.
 
@@ -210,6 +254,8 @@ Rabbitmq request-reply 패턴에서 응답을 제공할 때 사용하는 채널 
     - 특정 데이터 경쟁이 없는 시점에는 분산락이 월등하게 빠르다.
     - 분산락 구현은 동시성 제어가 특정 계좌 두 개에 국한되지만 메시지 브로커 사용 이후 모든 요청이 순차 처리되어 레이턴시가 증가한다.
     - 분산락이 아닌 경우 동시성 제어 영역을 좁히기 위해서는 두 개 계좌에 한정해서 순차 처리를 보장하면 되는데 구현이 어렵다.
+
+### 발생할 수 있는 이슈 고려
 
 메시지 브로커를 사용하면 다음과 같은 이슈가 고려할 수 있었다.
 메시지 생산 시점에서 발생하는 에러는 클라이언트에 전파할 수 있지만 소비하는 시점에 발생하는 에러나 중간 통신하는 부분에서 발생하는 에러는 어떻게 처리할지 고민 해볼 필요가 있다.
