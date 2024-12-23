@@ -1,0 +1,357 @@
+---
+title: logback useful appender 에 대한 개인적인 정리
+date: '2024-12-23'
+tags: ['로깅']
+draft: false
+summary: 좋아보이는 어펜더 리스트 정리
+images: []
+---
+
+## Introduction
+
+<TOCInline toc={props.toc} exclude="Introduction" />
+
+## 개요
+
+성능과 관계없이 로그를 어떻게 저장할지 고민했고 유용해보이는 어펜더를 정리했다.
+
+- SMTP Appender : 로그 메일로 전송. 특정 예외 바로 파악 가능
+- DBAppender : 로그 영속화. 로그 관리 시스템이 필요할정도로 로그가 중요하다면 채택하면 좋아보임.
+- FileAppender : 파일로 관리. 즉각적으로 확인하지 않아도 되고 어느정도 유실되도 괜찮다면 채택하면 좋아보임.
+
+## SMTP Appender - Marker based triggering
+
+### 요약
+
+- 개요 : 마킹된 로그를 SMTP를 통해 메일 전송이 가능하다.
+- 장점
+    - 특정 이벤트가 발생하면 메일을 전송이 손쉽게 가능하다.
+- 단점
+    - SMTP 서버 설정이 필요하다.
+    - 특수 케이스에 대한 알림 구현이 로직에서 관리가 되며 수정할 때마다 재배포가 필요하다.
+
+### 설명
+
+로그를 SMTP를 통해 메일 전송이 가능하다. 그 중 `Marker based triggering` 방식으로 마킹된 로그가 쌓이면 전송하도록 구성할 수 있다.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="EMAIL" class="ch.qos.logback.classic.net.SMTPAppender">
+        <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+            <marker>NOTIFY_ADMIN</marker>
+        </evaluator>
+        <smtpHost>smtp-relay.gmail.com</smtpHost>
+        <from>geonc123@estsoft.com</from>
+        <to>geonc123@estsoft.com</to>
+        <subject>TESTING: %logger{20} - %m</subject>
+        <layout class="ch.qos.logback.classic.html.HTMLLayout"/>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="EMAIL" />
+    </root>
+</configuration>
+
+```
+
+일부 이벤트를 마커 설정해 로그를 전달받는다.
+
+```kotlin
+@RestControllerAdvice
+class HelloExceptionHandler {
+    private val log = LoggerFactory.getLogger(HelloExceptionHandler::class.java)
+    @ExceptionHandler(RuntimeException::class)
+    fun handleException(e: RuntimeException): String {
+        val notifyAdmin = MarkerFactory.getMarker("NOTIFY_ADMIN")
+        log.warn(notifyAdmin, "An exception occurred {}", e.message)
+        return "Error: ${e.message}"
+    }
+}
+```
+
+발생한 예외 수집한 모습이다.
+
+<img width="1300" alt="스크린샷 2024-12-23 오후 1 27 43" src="https://github.com/user-attachments/assets/cc511049-6e64-471f-a550-c28eca14a005" />
+
+
+JaninoEventEvaluator 기반 트리거도 가능하다. expression 을 등록하면 전송한다.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="EMAIL" class="ch.qos.logback.classic.net.SMTPAppender">
+        <evaluator class="ch.qos.logback.classic.boolex.OnMarkerEvaluator">
+            <marker>NOTIFY_ADMIN</marker>
+            <expression>markerList.contains("NOTIFY_ADMIN")||markerList.contains("TRANSACTION_ADMIN")</expression>
+        </evaluator>
+        <smtpHost>smtp-relay.gmail.com</smtpHost>
+        <from>geonc123@estsoft.com</from>
+        <to>geonc123@estsoft.com</to>
+        <subject>TESTING: %logger{20} - %m</subject>
+        <layout class="ch.qos.logback.classic.html.HTMLLayout"/>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="EMAIL" />
+    </root>
+</configuration>
+```
+
+JaninoEventEvaluator 사용하려면 build.gradle.kts 에 다음 라이브러리를 추가해야 한다.
+
+> [spring boot coordinates](https://docs.spring.io/spring-boot/appendix/dependency-versions/coordinates.html) 에서 [org.codehaus.janino:commons-compiler:3.1.12](https://janino-compiler.github.io/janino/) 라이브러리가 포함돼야 하는데 포함되지 않았나보다.
+> 어떤 이유에선지 라이브러리를 직접 설정해야 한다.
+
+```
+dependencies {
+	implementation("org.codehaus.janino:janino:3.1.12")
+}
+```
+
+SMTP Appender 는 버퍼 관리가 중요하다.
+버퍼에 담긴 데이터가 전부 전송되기 때문이다.
+다음처럼 버퍼에 저장된 로그를 차례대로 출력한다.
+
+<img width="1300" alt="스크린샷 2024-12-23 오후 1 19 46" src="https://github.com/user-attachments/assets/9ea189a9-248f-4664-a1be-5cb044119ffc" />
+
+[버퍼가 가득 찰까봐 걱정할 수 있는데 걱정하지 않아도 된다.](https://logback.qos.ch/manual/appenders.html#bufferManagement)
+버퍼를 넘는 순간 오래된 버퍼를 삭제한다. 또한 지난 30분 간 업데이트 되지 않은 버퍼도 자동으로 삭제한다.
+
+## DBAppender
+
+### 요약
+
+- 개요 : DB에 로그를 저장한다.
+- 장점
+    - 로그 영속화가 가능하다.
+    - 로그를 관계형 모델로 관리할 수 있다.
+- 단점
+    - 라이브러리 업데이트가 더 이상 진행되지 않는다.
+
+### 설명
+
+다음처럼 DBAppender 설정하면 된다.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appender name="DB" class="ch.qos.logback.classic.db.DBAppender">
+        <connectionSource class="ch.qos.logback.core.db.DriverManagerConnectionSource">
+            <driverClass>com.mysql.jdbc.Driver</driverClass>
+            <url>jdbc:mysql://localhost:3306/log</url>
+            <user>root</user>
+            <password>root</password>
+        </connectionSource>
+    </appender>
+</configuration>
+```
+
+그러나 DBAppender 는 logback-classic 에서 제공하지 않기 때문에 직접 추가해야 한다. 라이브러리 버전은 1.2.11.1 하나가 전부다.
+
+```
+dependencies {
+	// https://mvnrepository.com/artifact/ch.qos.logback.db/logback-classic-db
+	implementation("ch.qos.logback.db:logback-classic-db:1.2.11.1")
+}
+```
+
+초기화 스크립트도 직접 실행하면 된다. logback-classic-db-1.2.11.1 패키지에서 `ch/qos/logback/classic/db/script/mysql.sql` 파일을 찾자.
+데이터를 추가하면 다음처럼 테이블이 생성된다.
+
+```
+mysql> show tables;
++-------------------------+
+| Tables_in_log           |
++-------------------------+
+| logging_event           |
+| logging_event_exception |
+| logging_event_property  |
++-------------------------+
+```
+
+
+데이터베이스 드라이버가 필요하니 라이브러리를 추가해야 한다.
+
+```kotlin
+dependencies {
+	runtimeOnly("com.mysql:mysql-connector-j")
+}
+```
+
+### 데이터베이스 스키마
+
+DBAppender는 로그 이벤트를 관계형으로 모델링했다. 다음은 테이블 목록이다.
+
+- logging_event : 발생한 로깅 이벤트
+- logging_event_exception : 로깅 이벤트에서 예외가 발생했다면 스택 트레이스가 저장된다.
+- logging_event_property : 로깅 이벤트에서 MDC에 저장된 정보가 저장된다.
+
+logging_event 에 포함되는 데이터와 예시는 다음과 같다.
+
+| timestmp      | formatted\_message | logger\_name                           | level\_string | thread\_name         | reference\_flag | arg0 | arg1 | arg2 | arg3 | caller\_filename   | caller\_class                          | caller\_method | caller\_line | event\_id |
+|:--------------|:-------------------|:---------------------------------------|:--------------|:---------------------|:----------------|:-----|:-----|:-----|:-----|:-------------------|:---------------------------------------|:---------------|:-------------|:----------|
+| 1734940085480 | Saying hello       | tis.hello\_log\_system.HelloController | INFO          | http-nio-8080-exec-1 | 1               | null | null | null | null | HelloController.kt | tis.hello\_log\_system.HelloController | hello          | 13           | 16        |
+
+logging_event_exception 에 포함되는 데이터와 예시는 다음과 같다.
+
+| event\_id | i | trace\_line                                                                                                |
+|:----------|:--|:-----------------------------------------------------------------------------------------------------------|
+| 45        | 0 | java.lang.RuntimeException: An error occurred                                                              |
+| 45        | 1 | at tis.hello\_log\_system.HelloController.error\(HelloController.kt:20\)                                   |
+| 45        | 2 | at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke\(DirectMethodHandleAccessor.java:103\) |
+| 45        | 3 | at java.base/java.lang.reflect.Method.invoke\(Method.java:580\)                                            |
+| 45        | 4 | at kotlin.reflect.jvm.internal.calls.CallerImpl$Method.callMethod\(CallerImpl.kt:97\)                      |
+| 45        | 5 | at kotlin.reflect.jvm.internal.calls.CallerImpl$Method$Instance.call\(CallerImpl.kt:113\)                  |
+| 45        | 6 | at kotlin.reflect.jvm.internal.KCallableImpl.callDefaultMethod$kotlin\_reflection\(KCallableImpl.kt:207\)  |
+| 45        | 7 | at kotlin.reflect.jvm.internal.KCallableImpl.callBy\(KCallableImpl.kt:112\)                                |
+
+event_id 에 맞게 root log 를 찾도록 설계됐다.
+
+| timestmp      | formatted\_message                                                                                                                                                                           | logger\_name                                                                                | level\_string | thread\_name         | reference\_flag | arg0 | arg1 | arg2 | arg3 | caller\_filename  | caller\_class                        | caller\_method | caller\_line | event\_id |
+|:--------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------------------------------|:--------------|:---------------------|:----------------|:-----|:-----|:-----|:-----|:------------------|:-------------------------------------|:---------------|:-------------|:----------|
+| 1734940238748 | Servlet.service\(\) for servlet \[dispatcherServlet\] in context with path \[\] threw exception \[Request processing failed: java.lang.RuntimeException: An error occurred\] with root cause | org.apache.catalina.core.ContainerBase.\[Tomcat\].\[localhost\].\[/\].\[dispatcherServlet\] | ERROR         | http-nio-8080-exec-1 | 2               | null | null | null | null | DirectJDKLog.java | org.apache.juli.logging.DirectJDKLog | log            | 175          | 45        |
+
+logging_event_property 에는 다음처럼 MDC에 저장된 정보가 포함된다.
+
+| event\_id | mapped\_key    | mapped\_value                        |
+|:----------|:---------------|:-------------------------------------|
+| 41        | transaction.id | ca533ad5-ba07-44a5-843b-823ef82d56b6 |
+| 42        | transaction.id | ca533ad5-ba07-44a5-843b-823ef82d56b6 |
+| 43        | transaction.id | ca533ad5-ba07-44a5-843b-823ef82d56b6 |
+| 44        | transaction.id | ca533ad5-ba07-44a5-843b-823ef82d56b6 |
+
+해당 이벤트 식별자를 이용해 데이터를 조회하면 된다.
+
+| timestmp      | formatted\_message                      | logger\_name                                 | level\_string | thread\_name         | reference\_flag | arg0              | arg1 | arg2 | arg3 | caller\_filename         | caller\_class                                | caller\_method  | caller\_line | event\_id |
+|:--------------|:----------------------------------------|:---------------------------------------------|:--------------|:---------------------|:----------------|:------------------|:-----|:-----|:-----|:-------------------------|:---------------------------------------------|:----------------|:-------------|:----------|
+| 1734940238734 | An exception occurred An error occurred | tis.hello\_log\_system.HelloExceptionHandler | WARN          | http-nio-8080-exec-1 | 1               | An error occurred | null | null | null | HelloExceptionHandler.kt | tis.hello\_log\_system.HelloExceptionHandler | handleException | 18           | 44        |
+
+
+## FileAppender
+
+### 요약
+
+- 개요 : 파일로 로그를 저장한다.
+- 장점
+    - 파일로 관리가 가능해 준영속화 가능하다.
+    - 특정 이벤트 기점으로 파일을 분리해서 관리할 수 있어 파일이 커지는 상황을 막는다.
+    - 디스크 관리 도움을 주기 위해 일정 이상 쌓이면 오래된 데이터를 삭제하는 등의 기능을 제공한다.
+- 단점
+    - 파일로 쌓여 디스크 관리가 어렵다.
+    - 완전한 영속화는 아니다.
+
+### 설명
+
+FileAppender 는 다음처럼 관리하면 된다.
+
+```xml
+<configuration>
+  <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+    <file>log.log</file>
+  </appender>
+ </configuration>
+```
+
+OutputStreamAppender 하위 클래스로 로깅 이벤트를 파일에 추가한다. 아래 옵션으로 어떻게 저장할지 결정된다.
+
+| Property Name	 | Type	    | Description                                                                               |
+|----------------|----------|-------------------------------------------------------------------------------------------|
+| append	        | boolean	 | 기존 파일 끝에 추가할지 결정한다. true 면 파일 끝에 추가하고 그렇지 않다면 삭제한다. 기본 값은 true 다.                         |
+| encoder	       | Encoder	 | 로킹 이벤트가 기록되는 방식을 정한다.                                                                     |
+| file	          | String	  | 작성할 파일 이름을 정한다. 파일 부모 디렉토리가 없는 경우 자동으로 생성한다.                                              |
+| bufferSize	    | FileSize | immediateFlush 옵션이 false 로 설정된 경우 출력 버퍼 크기 설정한다. 기본 값은 8KB이다. 아무리 부담스러운 작업이어도 256KB 충분하다. |
+| prudent        | boolean  | 한 파일을 여러 FileAppender 가 사용하는 경우 해당 파일에 신중하게 작성할지 결정한다.                                    |
+
+
+FileAppender 는 기본 출력 스트림으로 바로 flush 되므로 로깅 이벤트가 손실되지 않는다. 그러나 로깅 이벤트 처리량을 늘리기 위해 immediateFlush 설정 변경으로 버퍼를 활용 할 수 있다.
+
+버퍼를 사용하지 않는 경우 다음처럼 동작한다.
+
+![image](https://github.com/user-attachments/assets/a5603678-7626-440a-b514-664d9585f2e2)
+
+버퍼를 사용하는 경우 다음처럼 동작한다.
+
+![image](https://github.com/user-attachments/assets/c0bdc2fc-5858-4407-93b5-ae3fa7c58e07)
+
+
+> prudent 모드는 배타적 잠금을 활용해 직렬화하며 대략 로그 작성 비용이 3배 증가한다. NFS(네트워크 파일 시스템)에서는 더 많은 비용이 발생한다. 잠금 편향이 발생하고 기아 현상이 발생한다.
+> prudent 모드는 네트워크 속도와 OS 구현 세부 정보에 성능이 좌우하는데 [FileLockSimulator](https://gist.github.com/ceki/2794241) 로 시뮬레이션 가능하다.
+
+
+배치 애플리케이션을 개발하거나 단기 애플리케이션인 경우 시작마다 새 로그 파일을 만드는게 좋다. 파일에 실행한 날짜를 추가하면 된다. (참고 자료 : [Uniquely named files](https://logback.qos.ch/manual/appenders.html#uniquelyNamed))
+
+```xml
+<configuration>
+  <timestamp key="bySecond" datePattern="yyyyMMdd'T'HHmmss"/>
+
+  <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+    <file>log-${bySecond}.log</file>
+  </appender>
+ </configuration>
+```
+
+### RollingFileAppender
+
+RollingFileAppender 형식은 다음과 같다.
+
+```xml
+<configuration>
+	<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+			<fileNamePattern>${LOGBACK_ROLLINGPOLICY_FILE_NAME_PATTERN:-${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz}</fileNamePattern>
+			<cleanHistoryOnStart>${LOGBACK_ROLLINGPOLICY_CLEAN_HISTORY_ON_START:-false}</cleanHistoryOnStart>
+			<maxFileSize>${LOGBACK_ROLLINGPOLICY_MAX_FILE_SIZE:-10MB}</maxFileSize>
+			<totalSizeCap>${LOGBACK_ROLLINGPOLICY_TOTAL_SIZE_CAP:-0}</totalSizeCap>
+			<maxHistory>${LOGBACK_ROLLINGPOLICY_MAX_HISTORY:-7}</maxHistory>
+		</rollingPolicy>
+	</appender>
+</configuration>
+```
+
+RollingFileAppender 는 특정 조건이 충족되면 파일을 생성해 로깅 이벤트를 적재한다.
+롤오버하는 방식은 두 가지 중 하나로 설정한다.
+
+- RollingPolicy : 롤링이 발생할 상황을 지시한다.
+- TriggeringPolicy : 롤링이 발생할 시점을 지시한다.
+
+기본적인 FileAppender 설정 방식을 따르며 추가적인 설정은 다음과 같다.
+
+| Property Name	 | Type	          | Description             |
+|----------------|----------------|-------------------------|
+| rollingPolicy	 | RollingPolicy	 | 롤오버가 발생할 상황을 지시하는 방법이다. |
+
+정책은 다음과 같다.
+
+- RollingPolicy
+- TimeBasedRollingPolicy : 날짜별로 파일을 보관한다.
+- SizeAndTimeBasedRollingPolicy : 날짜별로 파일을 보관함과 동시에 파일 크기를 제한한다. 크기를 넘으면 해당 날짜에서 넘버링해 파일을 관리한다.
+- FixedWindowRollingPolicy : 더이상 사용하지 않는다.
+- TriggeringPolicy
+- SizeBasedTriggeringPolicy : 파일 크기가 지정한 크기를 넘으면 롤링한다.
+
+자주 사용되는 SizeAndTimeBasedRollingPolicy, SizeAndTimeBasedRollingPolicy 정책만 확인해보겠다.
+
+#### TimeBasedRollingPolicy
+
+| Property Name	       | Type	    | Description                                                                      |
+|----------------------|----------|----------------------------------------------------------------------------------|
+| fileNamePattern	     | String	  | 롤오버될 파일 이름을 정의하며 날짜 패턴이 생력되면 기본 패턴(yyyy-MM-dd)이 추가된다. 롤오버 기간은 패턴에서 유추한다.         |
+| maxHistory	          | int	     | 보관할 로그 파일 수를 지정한다. 최대 보관 수를 넘으면 오래된 로그부터 비동기적으로 삭제한다. 0으로 설정하면 비활성화되며 기본 값은 0이다. |
+| totalSizeCap	        | int	     | 보관한 로그 크기를 지정한다. 총 크기를 초과하면 오래된 로그부터 비동기적으로 삭제한다. 0으로 설정하면 비활성화되며 기본 값은 0이다.     |
+| cleanHistoryOnStart	 | boolean	 | true로 설졍하면 appender 시작하면서 아카이브된 로그를 삭제한다.                                        |
+
+> 팁 : TimeBasedRollingPolicy 에서 로그가 간혹 보이지 않는 경우는 아직 롤오버가 진행되지 않은 경우다. 롤오버 트리거는 서비스가 로깅 이벤트를 적재할 때 발생한다.
+
+> 유추할 때 다중으로 쓰면 기본 지정자를 찾을 수 없기에 `%d{yyyy/MM, aux}` 방식처럼 보조 라고 지정해야 한다. 시간대를 지정하고 싶다면 `%d {yyyy-MM-dd-HH, UTC }` 처럼 지정하면 된다.
+
+> /wombat/foo.%d.gz 형식으로 명명하면 파일을 압축(Automatic file compression)해서 관리할 수 있다.
+
+#### SizeAndTimeBasedRollingPolicy
+
+기본적인 TimeBasedRollingPolicy 설정 방식을 따르며 추가적인 설정은 다음과 같다.
+
+| Property Name	   | Type	     | Description                                                                       |
+|------------------|-----------|-----------------------------------------------------------------------------------|
+| fileNamePattern	 | String	   | TimeBasedRollingPolicy 정책과 유사하지만 형식에 `%i` 가 꼭 포함되어야 한다. 크기가 넘어가면 해당 위치에 숫자가 증가한다. |
+| maxFileSize	     | FileSize	 | 설정된 크기가 넘어가면 0부터 시작하여 증가하는 인덱스로 보관된다. `%i` 형식에 해당 인덱스가 설정된다.                      |
