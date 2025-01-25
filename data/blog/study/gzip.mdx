@@ -137,6 +137,27 @@ private void writeShort(int s, byte[] buf, int offset) throws IOException {
 
 ### 궁금증 3 : 왜 gzip 일까?
 
-
 [해당 자료](https://bbengfort.github.io/2017/06/compression-benchmarks/)에서 압축이 가장 빠른 방법이라고 한다.
 그런데 추출은 차이가 없어 보인다.
+비교대상은 ZIP, GZIP, BZIP2 이다.
+
+압축 성능 측면에서 비교 자료다.
+
+```
+BZIP2 > GZIP >= ZIP
+```
+
+![그림](/static/images/study/gzip/2.png)
+
+속도 측면에서 비교 자료다.
+
+```
+GZIP >= ZIP > BZIP2
+```
+
+| 파일 크기 대비 추출 시간 비교                      | 파일 크기 대비 압축 시간 비교                      |
+|----------------------------------------|----------------------------------------|
+| ![그림](/static/images/study/gzip/3.png) | ![그림](/static/images/study/gzip/4.png) |
+
+[WIKI](https://en.wikipedia.org/wiki/ZIP_%28file_format%29)에서 ZIP과 GZIP 비교점은 ZIP 중 `DEFLATE` 알고리즘을 사용하면 GZIP과 동일하다.
+그래서 ZIP과 GZIP은 유사한 성능을 보여주는 모습을 볼 수 있다.
